@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "timelog"
+version = "0.1.0"
+description = "Worklog suggestions per card from ActivityWatch, with parallel agent work counted in full, pushed to Jira"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+timelog = "timelog.cli:main"
+
+[tool.setuptools]
+packages = ["timelog", "timelog.sources"]
