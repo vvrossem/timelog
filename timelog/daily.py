@@ -258,9 +258,11 @@ def entry_pieces(entry, entries, events):
     largest first, and the prompts written during it"""
     cards = model.card_regex()
     streams = {s.removesuffix(" (folded)") for s in entry.streams}
+    own = jira.card_of_task(entry.task, cards)
+    others = by_card(entry, entries, cards)
     held, prompts = defaultdict(dt.timedelta), []
     for e in folded(events):  # your pieces as the entry counts them: not your time in an agent's turn
-        if e.stream.removesuffix(" (folded)") not in streams or counted_elsewhere(e, entry, entries, cards):
+        if e.stream.removesuffix(" (folded)") not in streams or counted_elsewhere(e, own, others):
             continue
         if e.kind == "claude":
             if entry.start <= e.when < entry.end:
@@ -290,15 +292,23 @@ def full_name(label, names):
     return whole[0] if len(whole) == 1 else label
 
 
-def counted_elsewhere(event, entry, entries, cards):
-    """an event of another card that an overlapping entry of that card counts: your lane runs
-    through entries of several cards when an agent works in parallel"""
-    if not event.card or event.card == jira.card_of_task(entry.task, cards):
+def by_card(entry, entries, cards):
+    """{card: [(start, end, streams)]} of the entries but `entry`, to find quickly the one counting an event"""
+    out = defaultdict(list)
+    for o in entries:
+        if o is not entry:
+            out[jira.card_of_task(o.task, cards)].append((o.start, o.end, {s.removesuffix(" (folded)") for s in o.streams}))
+    return out
+
+
+def counted_elsewhere(event, own, others):
+    """an event of another card than `own` that an overlapping entry of that card counts (`others`,
+    by_card's): your lane runs through entries of several cards when an agent works in parallel"""
+    if not event.card or event.card == own:
         return False
     until = event.until or event.when
-    return any(o is not entry and jira.card_of_task(o.task, cards) == event.card and event.stream in
-               {s.removesuffix(" (folded)") for s in o.streams} and event.when < o.end and until > o.start
-               for o in entries)
+    return any(event.stream in streams and event.when < end and until > start
+               for start, end, streams in others.get(event.card, ()))
 
 
 def correct(day, renames, drops, tasks=None, comments=None, added=(), breaks=()):
