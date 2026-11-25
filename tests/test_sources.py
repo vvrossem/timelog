@@ -117,6 +117,16 @@ def test_focus_on_a_session_window_is_your_time(aw):
     assert timeline.agent_minutes(entries)["A"] == 10
 
 
+def test_a_session_window_has_the_whole_title_vs_code_cut(aw):
+    aw["agent.turn"] = [turn("09:00", 10, "s1", "invoice export", title="Invoice export to the bank")]
+    aw["currentwindow"] = [aw_event("09:00", 12, app="Code", title="Invoice export … - shop_odoo - Visual Studio Code"),
+                           aw_event("09:12", 18, app="Code", title="Stock report … - shop_odoo - Visual Studio Code")]
+    out, _info = activitywatch.combine(at("00:00"), at("23:59"), re.compile(r"\bA\b"), "me")
+    assert [e.text for e in out if e.kind == "focus"] == [
+        "Invoice export to the bank - shop_odoo - Visual Studio Code",
+        "Stock report … - shop_odoo - Visual Studio Code"]  # no session of that title: kept as VS Code shows it
+
+
 @pytest.mark.parametrize("info, expected", [
     ({"headRefName": "ghi-310-stock_report", "title": "Stock report"}, "GHI-310"),
     ({"headRefName": "master-fix-CA-cert", "title": "[BUILD] fix CA",

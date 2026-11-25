@@ -339,3 +339,23 @@ def test_the_comments_tell_when_and_where_each_task_was(days, monkeypatch, capsy
     monkeypatch.setattr("builtins.input", lambda prompt: "")
     questions.ask_comments([("ABC-1", "0h30", "invoice export", where)])
     assert "1) ABC-1  0h30  invoice export\n     09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev\n" in capsys.readouterr().out
+
+
+def test_the_questions_tell_what_little_there_is(days, monkeypatch):
+    def glance(key, card, a, b):  # seconds after 10:00
+        return mine("10:00", card, kind="browser")._replace(
+            when=at("10:00") + dt.timedelta(seconds=a), until=at("10:00") + dt.timedelta(seconds=b), keys=(key,))
+    events = [mine("09:00", "ABC-1", minutes=20)._replace(keys=("shop_odoo",)),
+              ev("09:20", None, "afk", kind="away")._replace(until=at("10:00")),
+              glance("Gmail", None, 0, 15), glance("Gmail", "XYZ-9", 15, 25), glance("Slack", None, 25, 45),
+              mine("10:01", "ABC-2", minutes=30)._replace(keys=("stock_odoo",))]
+    monkeypatch.setattr(sources, "day_events", lambda date, cards: events)
+    day, gaps, _notes = reviewing.daily.build_day(DATE, events)
+    rows, labels = reviewing.review_rows(day, gaps, events)
+    asked = {q.title.split("  ")[0]: q.details for _row, q in reviewing.questions_of(DATE, day, rows, labels, events)}
+    assert asked["09:20-10:00"] == ["away from the keyboard the whole time", "until 09:20  shop_odoo (ABC-1)",
+                                    "from 10:00  Gmail"]
+    # glances only: shown anyway, with the card a glance showed, which gives no time
+    assert asked["10:00-10:01"] == [" 20s  Slack", " 15s  Gmail", "cards shown: XYZ-9 10s (Gmail)"]
+    assert reviewing.gist('"""\n<ide_selection>x</ide_selection>\ninvoice export') == "invoice export"
+    assert reviewing.gist('<agent-message from="a1">report</agent-message>') == ""

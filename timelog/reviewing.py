@@ -272,7 +272,12 @@ def questions_of(date, day, rows, labels, events, late=None):
                      else f"{row.start}-{row.end}  {spent}  {style.task(row.task)}")
         if late and not overlaps(start, end, late):
             continue
-        details = what_it_holds(line, entries, events)
+        if row.kind == "gap":
+            details = what_the_gap_holds(start, end, events)
+        else:
+            details = what_it_holds(line, entries, events)
+            if row.kind != "agent":
+                details += cards_shown([(e.start, e.end) for e in line], events)
         piece = daily.dominant(line, events) if line else None
         name = daily.full_name(piece.keys[0], names) if piece and piece.keys else ""
         scopes = rules.scopes(piece) if piece and not ONE_OFF.search(f"{piece.text} {name}") else []
@@ -290,16 +295,81 @@ def largest_pieces(line, entries, events):
         for (_stream, label), spent in pieces:
             held[label] += spent
         prompts += said
-    return [(label, spent) for label, spent in sorted(held.items(), key=lambda kv: -kv[1])[:3]
-            if spent >= timeline.GLANCE], prompts
+    ranked = sorted(((k, v) for k, v in held.items() if v >= dt.timedelta(seconds=1)), key=lambda kv: -kv[1])
+    return ([kv for kv in ranked if kv[1] >= timeline.GLANCE] or ranked)[:3], prompts  # glances when that's all
+
+
+def spent_of(spent):
+    seconds = round(spent.total_seconds())
+    return f"{round(seconds / 60):3}m" if seconds >= 60 else f"{seconds:3}s"
+
+
+# what an IDE or an agent adds to a prompt (a subagent's report comes as one): not what you wrote
+WRAPPED = re.compile(r"<(ide_[a-z_]+|system-reminder|agent-message)\b[^>]*>.*?(?:</\1>|\Z)", re.S)
+OPENED = re.compile(r"<ide_opened_file>The user opened the file (\S+)")
+
+
+def gist(text):
+    """a prompt's first line with words in it, without what the IDE or an agent added; else the file
+    the IDE says was open"""
+    said = re.sub(r"<[^>]+>", " ", WRAPPED.sub(" ", text))
+    line = next((line.strip() for line in said.splitlines() if re.search(r"\w", line)), "")
+    opened = OPENED.search(text)
+    return line or (f"(in {opened.group(1).replace(os.path.expanduser('~'), '~', 1)})" if opened else "")
+
+
+def prompt_lines(prompts):
+    said = [g for g in (gist(p.text) for p in prompts) if g]
+    return [f"prompt {style.clip(repr(g), 160)}" for g in said[:2]]
 
 
 def what_it_holds(line, entries, events):
     """the largest pieces of a line's entries, and its prompts"""
     largest, prompts = largest_pieces(line, entries, events)
-    return [f"{round(spent.total_seconds() / 60):3}m  {label}" for label, spent in largest] + [
-        f"prompt {style.clip(repr(p.text.strip().splitlines()[0] if p.text.strip() else ''), 160)}"
-        for p in prompts[:2]]
+    return [f"{spent_of(spent)}  {label}" for label, spent in largest] + prompt_lines(prompts)
+
+
+def cards_shown(spans, events):
+    """the cards your windows and tabs showed within the spans, glances too, which give no time: the
+    longest shown first, with the page or window that showed them"""
+    shown, where = defaultdict(dt.timedelta), {}
+    for e in events:
+        if not (e.stream.startswith("me ") and e.card and e.until):
+            continue
+        for a, b in spans:
+            overlap = min(e.until, b) - max(e.when, a)
+            if overlap > dt.timedelta(0):
+                shown[e.card] += overlap
+                where.setdefault(e.card, e.keys[0] if e.keys else "")
+    if not shown:
+        return []
+    ranked = sorted(shown, key=lambda c: -shown[c])
+    text = ", ".join(f"{c} {spent_of(shown[c]).strip()}" + (f" ({where[c]})" if where[c] else "") for c in ranked[:5])
+    return [style.clip(f"cards shown: {text}" + (f" and {len(ranked) - 5} more" if len(ranked) > 5 else ""), 200)]
+
+
+def what_the_gap_holds(start, end, events):
+    """what's known of a stretch with nothing active: when you were away from the keyboard, the
+    prompts you wrote, and what you did just before and just after"""
+    away = timeline.merge([(max(e.when, start), min(e.until, end), set()) for e in events
+                           if e.kind == "away" and e.until and e.when < end and e.until > start])
+    held = sum((b - a for a, b, _ in away), dt.timedelta())
+    if held >= end - start - dt.timedelta(minutes=1):
+        out = ["away from the keyboard the whole time"]
+    else:
+        out = [f"away from the keyboard {a:%H:%M}-{b:%H:%M}" for a, b, _ in away]
+        out.append(f"{daily.fmt(end - start - held)} with nothing recorded: the computer off, asleep or locked?"
+                   if away else "nothing recorded: the computer off, asleep or locked?")
+    yours = [e for e in events if e.until and e.until > e.when and (e.stream.startswith("me ") or e.kind == "call")
+             and e.kind not in ("presence", "away")]
+    before = max((e for e in yours if e.until <= start + dt.timedelta(minutes=1)), key=lambda e: e.until, default=None)
+    after = min((e for e in yours if e.when >= end - dt.timedelta(minutes=1)), key=lambda e: e.when, default=None)
+    names = daily.whole_names(events)
+    for e, what in ((before, "until"), (after, "from")):
+        if e:
+            name = daily.full_name(e.keys[0], names) if e.keys else e.text.split("|")[0]
+            out.append(f"{what} {e.until if e is before else e.when:%H:%M}  {name}" + (f" ({e.card})" if e.card else ""))
+    return out + prompt_lines([e for e in events if e.kind == "claude" and start <= e.when < end])
 
 
 def where_of(day, task, events):
