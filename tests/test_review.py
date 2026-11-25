@@ -388,6 +388,14 @@ def test_the_day_strip_shows_each_lane_and_the_question(monkeypatch):
         "                   ^"]
 
 
+def test_the_day_strip_shows_a_stretch_you_gave_a_card_while_away_as_attributed(monkeypatch):
+    monkeypatch.setattr(strip.style, "columns", lambda: 100)
+    entries = [model.Entry("ABC-1", at("09:00"), at("10:00"), "auto", ("me focus",)),
+               model.Entry("ABC-1", at("10:00"), at("10:38"), "manual", ("manual",))]
+    away = [ev("10:00", None, "afk", kind="away")._replace(until=at("10:50"))]
+    assert strip.lines("Tue 20.10", entries, away, [])[1] == "you        ▓▓▓▓▓▓▓▓▓▓░·"
+
+
 def test_the_comments_show_once_then_only_the_one_changed(monkeypatch, capsys):
     answers = ["1", "invoice export to the bank", ""]
     monkeypatch.setattr("builtins.input", lambda prompt: answers.pop(0))
