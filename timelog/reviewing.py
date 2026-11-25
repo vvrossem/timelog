@@ -327,12 +327,13 @@ def questions_of(date, day, rows, labels, events, late=None):
 def largest_pieces(line, entries, events):
     """(label, time) of the three largest pages, windows and sessions of a line's entries, glances
     left out unless that's all there is, and its prompts"""
-    held, prompts = defaultdict(dt.timedelta), []
+    spans, prompts = defaultdict(list), []
     for entry in line:
-        pieces, said = daily.entry_pieces(entry, entries, events)
-        for (_stream, label), spent in pieces:
-            held[label] += spent
+        pieces, said = daily.entry_spans(entry, entries, events)
+        for (_stream, label), held in pieces.items():
+            spans[label] += held
         prompts += said
+    held = {label: daily.spent(s) for label, s in spans.items()}
     ranked = sorted(((k, v) for k, v in held.items() if v >= dt.timedelta(seconds=1)), key=lambda kv: -kv[1])
     return ([kv for kv in ranked if kv[1] >= timeline.GLANCE] or ranked)[:3], prompts
 

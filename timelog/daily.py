@@ -116,19 +116,29 @@ def card_refs(events, task, cards):
     return prs, prompts
 
 
-def reviewed(date, entries, cards):
+def reviewed(date, entries, cards, events):
     """{card: ["repo#N"]} of the PRs you reviewed that day on GitHub: the card the PR names, else the
-    one an agent worked on when you posted the review (it posts them for you)"""
+    card of the last agent whose prompts named the PR before, else of the one working when you posted
+    the review (it posts them for you), else none: the card of your window then says where you were,
+    not what you reviewed"""
     out = defaultdict(list)
+    named = defaultdict(list)  # repo#N -> (when, agent) of the prompts naming it
+    for e in events:
+        if e.kind == "claude":
+            for repo, number in config.PR_URL.findall(e.text):
+                named[f"{repo}#{number}"].append((e.when, model.lane_of(e.stream)))
     for when, ref in sources.reviews():
         if f"{when:%Y-%m-%d}" != date:
             continue
         card = model.card_of_pr(model.pr_info(*ref.split("#")), cards)
         if not card:
-            working = [e for e in entries if e.start <= when < e.end + dt.timedelta(minutes=1)
-                       and not model.is_unattributed(e.task) and e.task != config.DROP]
-            working.sort(key=lambda e: model.lane_of(e.streams) == "you")  # an agent's first
-            card = working and jira.card_of_task(working[0].task, cards)
+            agents = [e for e in entries if not model.is_unattributed(e.task) and e.task != config.DROP
+                      and model.lane_of(e.streams) != "you"]
+            asked = {lane for at, lane in named[ref] if at <= when}
+            asked = [e for e in agents if model.lane_of(e.streams) in asked and e.start <= when]
+            working = [e for e in agents if e.start <= when < e.end + dt.timedelta(minutes=1)]
+            last = max(asked, key=lambda e: e.start, default=None) or (working or [None])[0]
+            card = last and jira.card_of_task(last.task, cards)
         short = ref.split("/", 1)[1]
         if card and short not in out[card]:
             out[card].append(short)
@@ -154,10 +164,11 @@ def what_was_done(task, entries, events):
     """for a card that only says which kind of work it is (tooling, admin): the titles of its agent
     sessions, then the comments of the rules its pieces matched however short. Not your windows'
     titles: they say where you were, not what you did"""
-    sessions, yours = defaultdict(dt.timedelta), defaultdict(dt.timedelta)
+    sessions, yours = defaultdict(list), defaultdict(list)
     for entry in (e for e in entries if e.task == task):
-        for (stream, label), spent in entry_pieces(entry, entries, events)[0]:
-            (sessions if stream.startswith("agent ") else yours)[label] += spent
+        for (stream, label), spans in entry_spans(entry, entries, events)[0].items():
+            (sessions if stream.startswith("agent ") else yours)[label] += spans
+    sessions, yours = ({label: spent(s) for label, s in held.items()} for held in (sessions, yours))
     noted = {r["name"]: r["comment"] for r in rules.DEFAULT_RULES + config.RULES if r.get("name") and r.get("comment")}
     items = sorted(sessions, key=sessions.get, reverse=True)
     items += [noted[n] for n in sorted(yours, key=yours.get, reverse=True) if n in noted]
@@ -221,7 +232,7 @@ def fill_comments(day, events, date):
     build can update them"""
     cards = model.card_regex()
     tasks = {e.task for e in day["entries"]} - set(day["comments"])
-    reviews = reviewed(date, day["entries"], cards)
+    reviews = reviewed(date, day["entries"], cards, events)
     earlier = earlier_comments(date, cards)
     defaults = {task: default_comment(task, events, date, cards, reviews, day["entries"], earlier) for task in tasks}
     day["defaults"] = {task: comment for task, comment in defaults.items() if comment}
@@ -256,11 +267,25 @@ def folded(events):
 def entry_pieces(entry, entries, events):
     """what an entry is made of: the time of each page, window, call and agent session in it, the
     largest first, and the prompts written during it"""
+    spans, prompts = entry_spans(entry, entries, events)
+    held = {key: sum((b - a for a, b in spans), dt.timedelta()) for key, spans in spans.items()}
+    return sorted(held.items(), key=lambda kv: -kv[1]), prompts
+
+
+def spent(spans):
+    """the time [(start, end)] cover, once where they overlap: a Meet page is both a call and a tab"""
+    return sum((b - a for a, b, _ in timeline.merge([(a, b, set()) for a, b in spans])), dt.timedelta())
+
+
+def entry_spans(entry, entries, events):
+    """{(stream, name): [(start, end)]} of each page, window, call and agent session in an entry,
+    and the prompts written during it"""
     cards = model.card_regex()
     streams = {s.removesuffix(" (folded)") for s in entry.streams}
     own = jira.card_of_task(entry.task, cards)
     others = by_card(entry, entries, cards)
-    held, prompts = defaultdict(dt.timedelta), []
+    held, prompts = defaultdict(list), []
+    names = whole_names(events)
     for e in folded(events):  # your pieces as the entry counts them: not your time in an agent's turn
         if e.stream.removesuffix(" (folded)") not in streams or counted_elsewhere(e, own, others):
             continue
@@ -268,14 +293,11 @@ def entry_pieces(entry, entries, events):
             if entry.start <= e.when < entry.end:
                 prompts.append(e)
             continue
-        if e.until:
-            overlap = min(e.until, entry.end) - max(e.when, entry.start)
-            if overlap > dt.timedelta(0):
-                stream = e.stream.removesuffix(" (folded)").replace("claude ", "agent ")
-                held[(stream, e.keys[0] if e.keys and e.keys[0] else e.text)] += overlap
-    names = whole_names(events)
-    held = {(stream, full_name(label, names)): spent for (stream, label), spent in held.items()}
-    return sorted(held.items(), key=lambda kv: -kv[1]), prompts
+        if e.until and min(e.until, entry.end) > max(e.when, entry.start):
+            stream = e.stream.removesuffix(" (folded)").replace("claude ", "agent ")
+            label = full_name(e.keys[0] if e.keys and e.keys[0] else e.text, names)
+            held[(stream, label)].append((max(e.when, entry.start), min(e.until, entry.end)))
+    return held, prompts
 
 
 def whole_names(events):

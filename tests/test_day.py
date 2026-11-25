@@ -150,17 +150,36 @@ def test_a_card_you_reviewed_a_pr_of_on_github_says_so(days, monkeypatch, capsys
     monkeypatch.setattr(model, "pr_info", lambda repo, n: prs.get(f"{repo}#{n}", {"title": "t"}))
     monkeypatch.setattr(sources, "reviews", lambda: [
         (at("09:20"), "acme/erp#287"), (at("10:10"), "acme/argocd#9336"),
+        (at("10:45"), "acme/lib#5"),  # while only your window was on a card
         (at("09:20") - dt.timedelta(days=1), "acme/old#1")])  # another day's
     events = [prompt("09:00", "ABC-1", text="review https://acme.atlassian.net/browse/ABC-1"), ev("09:00", "ABC-1", minutes=30),
               prompt("09:25", "ABC-1", text="could we reuse https://github.com/OCA/pos/pull/971 ?"),
               prompt("10:00", "ABC-2", "claude s2", text="review https://acme.atlassian.net/browse/ABC-2"),
-              ev("10:00", "ABC-2", "claude s2", minutes=20)]
+              ev("10:00", "ABC-2", "claude s2", minutes=20), mine("10:40", "ABC-3", minutes=20)]
+    monkeypatch.setattr(sources, "day_events", lambda date, cards: events)
+    jira.save(DATE, {"known": {"ABC-1": {"summary": "Hide attributes"}, "ABC-2": {"summary": "WMS key"},
+                               "ABC-3": {"summary": "Stock export"}},
+                     "candidates": {}})
+    cli.cmd_day(ns())
+    # 9336 names no card: it goes to the card of the agent working when the review was posted; lib#5
+    # to none, your window's card says where you were
+    assert store.load_day(DATE)["defaults"] == {"ABC-1": "PR review of erp#287", "ABC-2": "PR review of argocd#9336",
+                                                "ABC-3": "Stock export"}
+
+
+def test_a_review_naming_no_card_goes_to_the_agent_that_was_asked_about_its_pr(days, monkeypatch):
+    # posted while another agent works: the PR is the card of the one whose prompts named it
+    monkeypatch.setattr(config, "CACHE_DIR", str(days))
+    monkeypatch.setattr(model, "pr_info", lambda repo, n: {"title": "t"})
+    monkeypatch.setattr(sources, "reviews", lambda: [(at("10:45"), "acme/lib#5")])
+    events = [prompt("09:00", "ABC-1", text="go"), ev("09:00", "ABC-1", minutes=120),
+              prompt("10:30", "ABC-2", "claude s2", text="review https://github.com/acme/lib/pull/5"),
+              ev("10:30", "ABC-2", "claude s2", minutes=10)]
     monkeypatch.setattr(sources, "day_events", lambda date, cards: events)
     jira.save(DATE, {"known": {"ABC-1": {"summary": "Hide attributes"}, "ABC-2": {"summary": "WMS key"}},
                      "candidates": {}})
     cli.cmd_day(ns())
-    # 9336 names no card: it goes to the card of the agent working when the review was posted
-    assert store.load_day(DATE)["defaults"] == {"ABC-1": "PR review of erp#287", "ABC-2": "PR review of argocd#9336"}
+    assert store.load_day(DATE)["defaults"] == {"ABC-1": "Hide attributes", "ABC-2": "PR review of lib#5"}
 
 
 def test_the_tooling_card_says_what_was_done_not_its_title(days, monkeypatch):
@@ -182,6 +201,16 @@ def test_the_tooling_card_says_what_was_done_not_its_title(days, monkeypatch):
     cli.cmd_day(ns())
     assert store.load_day(DATE)["defaults"] == {
         "TOOL-68": "Timelog review editor loop and lpass login, Including odoo skills in c2c-ai-skills, Skills PR"}
+
+
+def test_the_admin_card_counts_a_call_s_page_once_when_it_is_a_tab_too(days, monkeypatch):
+    monkeypatch.setattr(config, "RULES", [{"name": "Meet - Daily", "comment": "daily"}, {"name": "Notes", "comment": "notes"}])
+    call = ev("10:00", "ADMIN-5", "call", kind="call")._replace(until=at("10:15"), keys=("Meet - Daily",))
+    tab = mine("10:00", "ADMIN-5", kind="browser", minutes=15)._replace(keys=("Meet - Daily",))
+    notes = mine("10:15", "ADMIN-5", minutes=25)._replace(keys=("Notes",))
+    entry = model.Entry("ADMIN-5", at("10:00"), at("10:40"), "auto", ("call", "me browser", "me focus"))
+    # the call's 15 minutes once, under the 25 of the notes
+    assert daily.what_was_done("ADMIN-5", [entry], [call, tab, notes]) == "notes, daily"
 
 
 def test_the_admin_card_says_timesheeting_for_tempo_however_short(days, monkeypatch):

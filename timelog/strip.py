@@ -5,6 +5,7 @@ import datetime as dt
 from . import config
 from . import model
 from . import style
+from . import timeline
 
 LABEL = 11  # the lane's name, before its cells
 INDENT = 2  # the review prints the strip indented
@@ -36,8 +37,11 @@ def overlap(a0, a1, b0, b1):
 
 def lanes(entries, events, first, step, n):
     """(your cells, the agents' cells): `?` where something waits for a card, else what holds the
-    cell longest"""
-    away = [(e.when, e.until) for e in events if e.kind == "away" and e.until]
+    cell longest; away only when no card of yours holds that time, as a stretch you gave one"""
+    mine = [(e.start, e.end, set()) for e in entries
+            if model.lane_of(e.streams) == "you" and not model.is_unattributed(e.task) and e.task != config.DROP]
+    away = [(a, b) for a, b, _ in timeline.subtract(
+        [(e.when, e.until, set()) for e in events if e.kind == "away" and e.until], [(a, b) for a, b, _ in timeline.merge(mine)])]
     you, agents = [], []
     for i in range(n):
         c0, c1 = first + i * step, first + (i + 1) * step
