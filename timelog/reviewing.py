@@ -125,9 +125,10 @@ def review_day(a):
             daily.fill_comments(day, events, a.date)
     stop = None
     if interactive(a):
-        rows, labels = review_rows(day, gaps, events)
         late = getattr(a, "late", None)
-        asked = questions_of(a.date, day, rows, labels, events, late)
+        with style.working("preparing the questions"):
+            rows, labels = review_rows(day, gaps, events)
+            asked = questions_of(a.date, day, rows, labels, events, late)
         completing_cards(a.date, day)
         when = daily.short_date(a.date)
 
