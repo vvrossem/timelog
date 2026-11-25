@@ -1,10 +1,13 @@
 """The day in a browser: `timelog serve` shows the lanes, entries and totals of a day, and asks
 about what has no card as the terminal review does, on a page served from this machine only"""
 import argparse
+import contextlib
 import datetime as dt
 import http.server
 import importlib.resources
 import json
+import threading
+import time
 import urllib.parse
 import webbrowser
 
@@ -17,16 +20,20 @@ from . import reviewing
 from . import sources
 from . import store
 from . import strip
+from . import style
 from . import sync
 from . import timeline
 
 def build(date):
     """the day rebuilt from ActivityWatch with your corrections, as the review builds it, and not
     saved: {day, events, gaps, notes, asked}, `asked` the review's (row, question) pairs"""
-    events = sources.day_events(date, model.card_regex())
-    day, gaps, notes = daily.build_day(date, events)
-    rows, labels = reviewing.review_rows(day, gaps, events)
-    asked = reviewing.questions_of(date, day, rows, labels, events)
+    with style.working("reading ActivityWatch"):
+        events = sources.day_events(date, model.card_regex())
+    with style.working("counting the day"):
+        day, gaps, notes = daily.build_day(date, events)
+    with style.working("preparing the questions"):
+        rows, labels = reviewing.review_rows(day, gaps, events)
+        asked = reviewing.questions_of(date, day, rows, labels, events)
     return {"day": day, "events": events, "gaps": gaps, "notes": notes, "asked": asked}
 
 
@@ -223,6 +230,18 @@ def date_of(query):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     built = {}  # the last day built, by date: entry N and question I are the ones the page shows
+    lock = threading.Lock()  # one build or change at a time; /api/progress answers meanwhile
+    started = None  # when the build or change running now started
+
+    @contextlib.contextmanager
+    def busy(self):
+        """one build or change at a time, timed for /api/progress"""
+        with self.lock:
+            Handler.started = time.monotonic()
+            try:
+                yield
+            finally:
+                Handler.started = None
 
     def log_message(self, *args):
         pass
@@ -259,17 +278,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if url.path == "/":
                 return self.send(200, importlib.resources.files("timelog").joinpath("page/index.html").read_bytes(),
                                  "text/html")
+            if url.path == "/api/progress":
+                started = Handler.started
+                return self.send(200, {"busy": started is not None, "doing": style.doing(),
+                                       "seconds": round(time.monotonic() - started) if started is not None else 0})
             if url.path == "/api/day":
                 date = date_of(query)
-                self.built.clear()  # read ActivityWatch again
-                return self.send(200, day_view(date, self.day(date)))
+                with self.busy():
+                    self.built.clear()  # read ActivityWatch again
+                    return self.send(200, day_view(date, self.day(date)))
             if url.path == "/api/entry":
                 date = date_of(query)
-                day, events = self.day(date)["day"], self.day(date)["events"]
-                n = query.get("n", [""])[0]
-                if not n.isdigit() or not 1 <= int(n) <= len(day["entries"]):
-                    raise Invalid(f"no entry {n} on {date}")
-                return self.send(200, entry_view(day, events, int(n)))
+                with self.busy():
+                    day, events = self.day(date)["day"], self.day(date)["events"]
+                    n = query.get("n", [""])[0]
+                    if not n.isdigit() or not 1 <= int(n) <= len(day["entries"]):
+                        raise Invalid(f"no entry {n} on {date}")
+                    return self.send(200, entry_view(day, events, int(n)))
             return self.send(404, {"error": f"no {url.path}"})
         except Invalid as e:
             return self.send(400, {"error": str(e)})
@@ -295,10 +320,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise Invalid("a JSON object")
             date = date_of({"date": [str(body.get("date", ""))]})
-            if date not in self.built:
-                raise Stale("the day changed since the page read it: refresh")
-            count = ACTIONS[path](date, self.built[date], body)
-            self.built.clear()  # rebuilt with the answer on the next read
+            with self.busy():
+                if date not in self.built:
+                    raise Stale("the day changed since the page read it: refresh")
+                with style.working("saving"):
+                    count = ACTIONS[path](date, self.built[date], body)
+                self.built.clear()  # rebuilt with the answer on the next read
             return self.send(200, {"changed": count})
         except Stale as e:
             return self.send(409, {"error": str(e)})
@@ -317,7 +344,9 @@ ACTIONS = {"/api/answer": answer, "/api/set": set_entries, "/api/undo": undo}
 
 
 def server(port):
-    return http.server.HTTPServer(("127.0.0.1", port), Handler)
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    httpd.daemon_threads = True
+    return httpd
 
 
 def cmd_serve(a):

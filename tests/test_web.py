@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from timelog import model, sources, store, web
+from timelog import model, sources, store, style, web
 from helpers import DATE, at, ev, mine, written_rules
 
 
@@ -209,6 +209,34 @@ def test_the_server_refuses_what_it_shouldnt_answer(server, path, method, host, 
     body = {"date": DATE, "question": 0, "start": "", "task": "ABC-1"} if method == "POST" else None
     assert call(server, path, method, host, body, headers)[0] == status
     assert not os.path.exists(store.day_path(DATE))
+
+
+def test_the_page_can_ask_what_a_slow_read_is_doing(built, monkeypatch):
+    reading, done = threading.Event(), threading.Event()
+    real = web.build
+
+    def slow(date):
+        with style.working("asking GitHub"):
+            reading.set()
+            done.wait(5)
+        return real(date)
+    monkeypatch.setattr(web, "build", slow)
+    httpd = web.server(0)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, args=(0.01,), daemon=True).start()
+    try:
+        assert json.loads(call(port, "/api/progress")[2])["busy"] is False
+        answer = threading.Thread(target=call, args=(port, f"/api/day?date={DATE}"))
+        answer.start()
+        assert reading.wait(5)
+        progress = json.loads(call(port, "/api/progress")[2])
+        done.set()
+        answer.join(5)
+    finally:
+        done.set()
+        httpd.shutdown()
+        httpd.server_close()
+    assert (progress["busy"], progress["doing"]) == (True, "asking GitHub")
 
 
 def test_activitywatch_down_is_said_on_the_page(days, monkeypatch):

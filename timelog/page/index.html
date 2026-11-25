@@ -40,6 +40,16 @@ button, input[type=date] {
 button:disabled { opacity: .5; cursor: default; }
 button:focus-visible, input:focus-visible, tr:focus-visible, rect:focus-visible { outline: 2px solid var(--agent); outline-offset: 1px; }
 .status { color: var(--muted); min-height: 20px; margin-bottom: 8px; }
+.busy { position: sticky; top: 8px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  margin-bottom: 12px; border-radius: 8px; font-weight: 500;
+  background: color-mix(in srgb, var(--agent) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--agent) 45%, var(--border)); }
+.busy[hidden] { display: none; }
+.busy .secs { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 400; }
+.spinner { width: 14px; height: 14px; flex: none; border: 2px solid var(--agent); border-right-color: transparent; border-radius: 50%;
+  animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; border-right-color: var(--agent); opacity: .6; } }
+main.loading section.card, main.loading aside.card { opacity: .45; pointer-events: none; transition: opacity .15s; }
 .status.error { color: var(--bad); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
 .dim { color: var(--muted); }
@@ -156,6 +166,9 @@ details.glances .pieces { margin-top: 4px; color: var(--text); }
       <button id="reload" title="Read ActivityWatch again">Refresh</button>
     </div>
   </header>
+  <div id="busy" class="busy" role="status" aria-live="polite" hidden>
+    <span class="spinner" aria-hidden="true"></span><span id="busy-text"></span><span id="busy-secs" class="secs"></span>
+  </div>
   <div id="status" class="status" role="status"></div>
 
   <section class="card">
@@ -283,17 +296,59 @@ async function getJSON(url) {
 
 // --- loading -------------------------------------------------------------------------------------
 
+// while the server reads ActivityWatch, asks GitHub or Jira, or saves: a bar saying which, the rest dimmed
+let busyCount = 0, poller = null;
+
+function startBusy(label) {
+  busyCount += 1;
+  $("busy-text").textContent = label + "…";
+  $("busy-secs").textContent = "";
+  $("busy").hidden = false;
+  document.querySelector("main").classList.add("loading");
+  if (!poller) poller = setInterval(progress, 400);
+}
+
+function stopBusy() {
+  busyCount = Math.max(busyCount - 1, 0);
+  if (busyCount) return;
+  clearInterval(poller);
+  poller = null;
+  $("busy").hidden = true;
+  document.querySelector("main").classList.remove("loading");
+}
+
+async function progress() {
+  try {
+    const now = await (await fetch("/api/progress")).json();
+    if (!poller) return;
+    if (now.busy && now.doing) $("busy-text").textContent = now.doing[0].toUpperCase() + now.doing.slice(1) + "…";
+    $("busy-secs").textContent = now.busy && now.seconds >= 1 ? `${now.seconds} s` : "";
+  } catch (e) {
+    // the bar keeps its last text
+  }
+}
+
+let loading = 0;  // the latest day asked for: an earlier answer arriving late isn't shown
+
 async function load(date, keep = false) {
-  status("Reading ActivityWatch…");
+  const asked = ++loading;
   $("date").value = date;
   history.replaceState(null, "", "?date=" + date);
+  startBusy("Reading the day");
+  let got;
   try {
-    view = await getJSON("/api/day?date=" + encodeURIComponent(date));
+    got = await getJSON("/api/day?date=" + encodeURIComponent(date));
   } catch (e) {
-    view = null;
-    status(e.message, true);
+    if (asked === loading) {
+      view = null;
+      status(e.message, true);
+    }
     return false;
+  } finally {
+    stopBusy();
   }
+  if (asked !== loading) return false;
+  view = got;
   status("");
   if (!keep) {
     zoom = null;
@@ -673,12 +728,15 @@ function answerForm({ options = [], scopes = [], drop, initial = "", give = "Giv
 
 async function post(path, payload) {
   let res, body;
+  startBusy("Saving");
   try {
     res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ date: view.date, ...payload }) });
     body = await res.json().catch(() => ({ error: res.statusText }));
   } catch (e) {
     return { error: e.message };
+  } finally {
+    stopBusy();
   }
   if (res.status === 409) {
     await load(view.date, true);
@@ -735,7 +793,6 @@ function showQuestion(id) {
 
 // after a change: the day read again, the change on top of the panel, the next question if any
 async function settle(text, locate, after) {
-  status("Reading ActivityWatch…");
   saved = { text, locate };
   if (!(await load(view.date, true))) return;
   status("Saved: " + text);
@@ -749,11 +806,14 @@ async function showEntry(n) {
   const body = panelStart("Entry", { mode: "entry", n });
   body.append(el("p", { class: "dim" }, "Loading…"));
   let entry;
+  startBusy("Reading the entry");
   try {
     entry = await getJSON(`/api/entry?date=${encodeURIComponent(view.date)}&n=${n}`);
   } catch (err) {
     body.lastChild.textContent = err.message;
     return;
+  } finally {
+    stopBusy();
   }
   if (panel.mode !== "entry" || panel.n !== n) return;
   body.lastChild.remove();

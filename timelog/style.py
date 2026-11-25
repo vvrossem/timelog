@@ -52,6 +52,11 @@ def note(text, *names):
 _working = []
 
 
+def doing():
+    """the slow step running now, the innermost: what the page shows while it waits; None when idle"""
+    return _working[-1] if _working else None
+
+
 @contextlib.contextmanager
 def working(text):
     """`# text…` on the terminal while a slow step runs, so that it doesn't look stuck; wiped when
