@@ -130,6 +130,7 @@ def my_lane(segments, tabs, edits, events, cards, me, titles):
     for s0, s1, app, title in segments:
         browsing = bool(BROWSERS.search(app))
         session = session_of(title, titles) if "code" in app.lower() else None
+        title = whole_title(title, titles) if session else title
         prompt = next((p for p in reversed(prompted.get(session, [])) if p.when <= s1), None) if session else None
         mine_tabs = [t for t in tabs if t["start"] < s1 and t["end"] > s0] if browsing else []
         # an editor's heartbeats run on a little after you leave it: not over the browser
@@ -184,6 +185,15 @@ def session_of(window_title, titles):
     if len(head) < 8:
         return None
     return next((s for t, s in titles.items() if t.startswith(head)), None)
+
+
+def whole_title(window_title, titles):
+    """a VS Code window title with the session title it cut with an ellipsis made whole"""
+    head, sep, rest = window_title.partition(" - ")
+    if not head.endswith("…"):
+        return window_title
+    whole = next((t for t in titles if t.startswith(head.rstrip("… ").strip())), None)
+    return f"{whole}{sep}{rest}" if whole else window_title
 
 
 SESSION_HISTORY = dt.timedelta(days=14)
