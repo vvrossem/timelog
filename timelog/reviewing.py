@@ -315,13 +315,20 @@ def questions_of(date, day, rows, labels, events, late=None):
             if row.kind != "agent":
                 sections[1:1] = [("cards shown", cards_shown([(e.start, e.end) for e in line], events)),
                                  ("around it", around(start, end, events, apps))]
-        piece = daily.dominant(line, events) if line else None
-        name = daily.full_name(piece.keys[0], names) if piece and piece.keys else ""
-        scopes = rules.scopes(piece) if piece and not ONE_OFF.search(f"{piece.text} {name}") else []
+        name, scopes = piece_scopes(line, events, names)
         out.append((start, row, questions.Question(
             kind, f"{start:%H:%M}-{end:%H:%M} · {daily.fmt(spent)}", sections,
             likely_cards(entries, start, end, known), scopes, row.kind == "gap", name, (start, end))))
     return [(row, q) for _start, row, q in sorted(out, key=lambda x: x[0])]
+
+
+def piece_scopes(line, events, names=None):
+    """(the name of the piece holding most of the line's entries, the rules an answer can become):
+    none for a PR, which a rule would never match again"""
+    piece = daily.dominant(line, events) if line else None
+    names = daily.whole_names(events) if names is None else names
+    name = daily.full_name(piece.keys[0], names) if piece and piece.keys else ""
+    return name, rules.scopes(piece) if piece and not ONE_OFF.search(f"{piece.text} {name}") else []
 
 
 def largest_pieces(line, entries, events):
@@ -494,12 +501,17 @@ def summary_of(task, known):
     return style.clip(summary, config.SUMMARY_WIDTH)
 
 
-def completing_cards(date, day):
-    """Tab completes the day's cards, the ones Jira knows and the candidates, admin and tooling"""
+def cards_to_offer(date, day):
+    """the day's cards, the ones Jira knows and the candidates, admin and tooling"""
     answer = jira.load(date) or {"known": {}, "candidates": {}}
-    questions.completing([e.task for e in day["entries"] if not model.is_unattributed(e.task)]
-                         + list(answer["known"]) + list(answer["candidates"])
-                         + [config.TRACKER.get(k) for k in ("admin_card", "tooling_card") if config.TRACKER.get(k)])
+    return ([e.task for e in day["entries"] if not model.is_unattributed(e.task)]
+            + list(answer["known"]) + list(answer["candidates"])
+            + [config.TRACKER.get(k) for k in ("admin_card", "tooling_card") if config.TRACKER.get(k)])
+
+
+def completing_cards(date, day):
+    """Tab completes cards_to_offer"""
+    questions.completing(cards_to_offer(date, day))
 
 
 def review_file(date, day, gaps, events):

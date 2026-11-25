@@ -9,14 +9,14 @@
 :root {
   --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e2e1dc;
   --work: #2a9d8f; --call: #b5179e; --agent: #4361ee; --todo: #e9a10a; --away: #c9c8c2;
-  --select: #1d1d1b; --hover: #f0efea;
+  --select: #1d1d1b; --hover: #f0efea; --ok: #2a9d8f; --bad: #d1495b;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #161615; --surface: #1f1f1d; --text: #ecebe6; --muted: #9b9a94; --border: #34332f;
     --work: #3fbfae; --call: #e05cc8; --agent: #7b93ff; --todo: #f2b632; --away: #4a4944;
-    --select: #ecebe6; --hover: #2a2a27;
+    --select: #ecebe6; --hover: #2a2a27; --ok: #3fbfae; --bad: #ef6f7f;
     color-scheme: dark;
   }
 }
@@ -30,41 +30,52 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; mar
 h1 { font-size: 20px; margin: 0; font-weight: 650; }
 h1 .app { color: var(--muted); font-weight: 500; margin-right: 8px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+h2 .count { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+h3.sub { font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }
 .nav { display: flex; gap: 6px; align-items: center; margin-left: auto; }
 button, input[type=date] {
   font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 10px; cursor: pointer;
 }
-button:disabled { opacity: .4; cursor: default; }
+button:disabled { opacity: .5; cursor: default; }
 button:focus-visible, input:focus-visible, tr:focus-visible, rect:focus-visible { outline: 2px solid var(--agent); outline-offset: 1px; }
 .status { color: var(--muted); min-height: 20px; margin-bottom: 8px; }
-.status.error { color: #d1495b; }
+.status.error { color: var(--bad); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.dim { color: var(--muted); }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.badge { font-size: 12px; border: 1px solid var(--border); border-radius: 99px; padding: 1px 8px; color: var(--muted); }
+button.badge.todo { color: var(--text); border-color: var(--todo); background: color-mix(in srgb, var(--todo) 15%, var(--surface)); }
+
+/* chart */
 .chart { overflow-x: auto; }
-.chart svg { display: block; }
+.chart svg { display: block; user-select: none; -webkit-user-select: none; }
 .chart text { fill: var(--muted); font-size: 12px; }
 .chart .lane-label { fill: var(--text); }
 .chart .grid { stroke: var(--border); }
-.chart rect.bar { cursor: pointer; }
-.chart rect.selected { stroke: var(--select); stroke-width: 2; }
-.chart svg { user-select: none; -webkit-user-select: none; }
 .chart .plot { cursor: crosshair; }
 .chart .brush { fill: var(--agent); fill-opacity: .15; stroke: var(--agent); stroke-opacity: .6; }
+.chart rect.bar, .chart rect.gapmark { cursor: pointer; }
+.chart rect.selected { stroke: var(--select); stroke-width: 2; }
+.chart rect.gapmark.selected { stroke: var(--todo); stroke-width: 2.5; stroke-dasharray: none; }
+.chart .faded { opacity: .15; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
-.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .filter { font-size: 12px; padding: 2px 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 6px; }
 .filter::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
 .filter.gap::before { background: none; border: 1.5px dashed var(--todo); width: 8px; height: 8px; }
-.filter[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
-.filter[aria-pressed="false"]::before { opacity: .35; }
+.filter[aria-pressed="true"] { border-color: var(--c, var(--todo)); box-shadow: inset 0 0 0 1px var(--c, var(--todo)); font-weight: 600; }
+.focusing .filter[aria-pressed="false"] { color: var(--muted); }
+.link { border: none; background: none; padding: 2px 4px; color: var(--muted); text-decoration: underline; font-size: 12px; }
 .zoom { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-h2 .count { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
-details.glances { margin-top: 8px; color: var(--muted); }
-details.glances summary { cursor: pointer; }
-details.glances .pieces { margin-top: 4px; color: var(--text); }
-.cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+
+/* layout */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+aside.card { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+
+/* tables */
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; }
 th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -76,22 +87,59 @@ td.num, td.time, td.min { white-space: nowrap; font-variant-numeric: tabular-num
 td.num, td.min { color: var(--muted); text-align: right; }
 .task { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
 .task::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
-.dim { color: var(--muted); }
 .default { color: var(--muted); font-style: italic; }
-aside.card { position: sticky; top: 16px; }
+.totals { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 14px; margin-top: 12px; }
+.totals .t { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.notes { margin: 0; padding-left: 18px; }
+
+/* to answer, answered */
+.asked { list-style: none; margin: 0; padding: 0; }
+.asked li button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.asked li button:hover, .asked li button.selected { background: var(--hover); }
+.asked li button.selected { box-shadow: inset 3px 0 0 var(--todo); }
+.asked li button:focus-visible { outline: 2px solid var(--agent); }
+.asked .when { font-variant-numeric: tabular-nums; }
+.asked .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.answered li button { color: var(--muted); }
+.answered li button .task { color: var(--text); font-weight: 500; }
+
+/* the panel */
+.saved { background: color-mix(in srgb, var(--ok) 14%, var(--surface)); border-left: 3px solid var(--ok); border-radius: 6px;
+  padding: 6px 10px; margin-bottom: 12px; display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.saved .link { color: var(--text); }
+.q-head { margin-bottom: 10px; }
+.q-head .kind { font-weight: 650; }
+.q-section { margin: 10px 0; }
+.q-section h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+.q-section pre { margin: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre;
+  overflow-x: auto; padding-bottom: 2px; }
+.options { display: grid; gap: 6px; margin: 12px 0; }
+.option { text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 8px; padding: 6px 10px; }
+.option .why { grid-column: 2; font-size: 12px; color: var(--muted); }
+.option .sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.option[aria-pressed="true"] { border-color: var(--todo); box-shadow: inset 0 0 0 1px var(--todo); }
+.answer-row { display: flex; gap: 6px; margin: 8px 0; }
+.answer-row input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.scopes { margin: 8px 0; display: grid; gap: 4px; font-size: 13px; }
+.scopes label { display: flex; gap: 6px; align-items: baseline; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.actions .spacer { flex: 1; }
+button.primary { background: var(--text); color: var(--surface); border-color: var(--text); }
+.error { color: var(--bad); margin-top: 8px; }
+.form { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
 .detail-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .pieces { list-style: none; margin: 0; padding: 0; }
 .pieces li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 2px 8px; padding: 4px 0; }
 .pieces .m { text-align: right; font-variant-numeric: tabular-nums; }
 .pieces .what { overflow-wrap: anywhere; }
 .pieces .stream { grid-column: 2; font-size: 12px; color: var(--muted); }
+details.glances { margin-top: 8px; color: var(--muted); }
+details.glances summary { cursor: pointer; }
+details.glances .pieces { margin-top: 4px; color: var(--text); }
 .prompt { padding: 6px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .prompt time { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
-.totals { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 14px; margin-top: 12px; }
-.totals .t { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
-.notes { margin: 0; padding-left: 18px; }
-.empty { color: var(--muted); padding: 24px 0; text-align: center; }
-.badge { font-size: 12px; border: 1px solid var(--border); border-radius: 99px; padding: 1px 8px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -99,6 +147,7 @@ aside.card { position: sticky; top: 16px; }
   <header>
     <h1><span class="app">timelog</span><span id="day-label"></span></h1>
     <span id="pushed" class="badge" hidden>handed over</span>
+    <button id="todo-badge" class="badge todo" hidden></button>
     <div class="nav">
       <button id="prev" title="The day before" aria-label="The day before">‹</button>
       <input id="date" type="date" aria-label="Day">
@@ -111,22 +160,31 @@ aside.card { position: sticky; top: 16px; }
 
   <section class="card">
     <div class="toolbar">
-      <div class="filters" role="group" aria-label="Show on the chart and in the entries">
-        <button class="filter" data-kind="work" aria-pressed="true" style="--c: var(--work)">attributed</button>
-        <button class="filter" data-kind="call" aria-pressed="true" style="--c: var(--call)">call</button>
-        <button class="filter" data-kind="agent" aria-pressed="true" style="--c: var(--agent)">agent</button>
-        <button class="filter" data-kind="todo" aria-pressed="true" style="--c: var(--todo)">to answer</button>
-        <button class="filter gap" data-kind="gap" aria-pressed="true">nothing active</button>
-        <button class="filter" data-kind="away" aria-pressed="true" style="--c: var(--away)">away</button>
+      <div class="filters" id="filters" role="group" aria-label="Highlight on the chart and in the entries">
+        <button class="filter" data-kind="work" aria-pressed="false" style="--c: var(--work)">attributed</button>
+        <button class="filter" data-kind="call" aria-pressed="false" style="--c: var(--call)">call</button>
+        <button class="filter" data-kind="agent" aria-pressed="false" style="--c: var(--agent)">agent</button>
+        <button class="filter" data-kind="todo" aria-pressed="false" style="--c: var(--todo)">to answer</button>
+        <button class="filter gap" data-kind="gap" aria-pressed="false">nothing active</button>
+        <button class="filter" data-kind="away" aria-pressed="false" style="--c: var(--away)">away</button>
+        <button class="link" id="show-all" hidden>show all</button>
       </div>
       <div class="zoom"><span id="range"></span><button id="zoom-out" disabled>Whole day</button></div>
     </div>
     <div class="chart" id="chart"></div>
-    <p class="hint">Drag across the chart to zoom in, double-click it for the whole day. Click a category to hide it.</p>
+    <p class="hint">Drag across the chart to zoom in, double-click it for the whole day. Click categories to highlight them.</p>
   </section>
 
   <div class="cols">
     <div>
+      <section class="card" id="asked-card" hidden>
+        <h2>To answer<span class="count" id="asked-count"></span></h2>
+        <ul class="asked" id="asked"></ul>
+        <div id="answered-wrap" hidden>
+          <h3 class="sub">Answered<span class="count" id="answered-count"></span></h3>
+          <ul class="asked answered" id="answered"></ul>
+        </div>
+      </section>
       <section class="card">
         <h2>Entries<span class="count" id="entries-count"></span></h2>
         <div class="table-wrap">
@@ -153,29 +211,29 @@ aside.card { position: sticky; top: 16px; }
       </section>
     </div>
     <aside class="card" id="detail">
-      <h2>Entry</h2>
-      <div id="detail-body" class="dim">Click an entry or a bar to see what it's made of.</div>
+      <h2 id="detail-title">Entry</h2>
+      <div id="detail-body" class="dim"></div>
     </aside>
   </div>
 </main>
+<datalist id="cards"></datalist>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
 const COLORS = { work: "--work", call: "--call", agent: "--agent", todo: "--todo" };
-let view = null;
-let selected = null;
-let zoom = null;  // {start, end} in ms, or the whole day
-const hidden = new Set();
 const MIN_ZOOM = 10 * 60000;
+let view = null;
+let zoom = null;  // {start, end} in ms, or the whole day
+const focus = new Set();  // the categories highlighted; none: all of them
+let panel = { mode: "none" };  // what the panel shows: none, entry {n}, question {id}, answered {i}
+let saved = null;  // {text, locate}: the last change, shown on top of the panel
+
+// --- helpers -------------------------------------------------------------------------------------
 
 function el(tag, attrs = {}, text) {
   const node = tag.startsWith("svg:") ? document.createElementNS(SVG, tag.slice(4)) : document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") node.setAttribute("class", v);
-    else if (k === "style") node.setAttribute("style", v);
-    else node.setAttribute(k, v);
-  }
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
   if (text !== undefined) node.textContent = text;
   return node;
 }
@@ -185,24 +243,35 @@ function hhmm(iso) {
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
 
+function hm(ms) {
+  return hhmm(new Date(ms).toISOString());
+}
+
 function fmt(minutes) {
   return Math.floor(minutes / 60) + "h" + String(minutes % 60).padStart(2, "0");
 }
 
-function localToday() {
-  const d = new Date();
+function isoDate(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
 function shiftDate(date, days) {
   const d = new Date(date + "T12:00:00");
   d.setDate(d.getDate() + days);
-  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  return isoDate(d);
+}
+
+function overlaps(a, b) {
+  return Date.parse(a.start) < Date.parse(b.end) && Date.parse(a.end) > Date.parse(b.start);
 }
 
 function status(text, error = false) {
   $("status").textContent = text;
   $("status").className = "status" + (error ? " error" : "");
+}
+
+function taskChip(task, kind) {
+  return el("span", { class: "task", style: `--c: var(${COLORS[kind] || "--work"})` }, task);
 }
 
 async function getJSON(url) {
@@ -212,7 +281,9 @@ async function getJSON(url) {
   return body;
 }
 
-async function load(date) {
+// --- loading -------------------------------------------------------------------------------------
+
+async function load(date, keep = false) {
   status("Reading ActivityWatch…");
   $("date").value = date;
   history.replaceState(null, "", "?date=" + date);
@@ -221,12 +292,16 @@ async function load(date) {
   } catch (e) {
     view = null;
     status(e.message, true);
-    return;
+    return false;
   }
   status("");
-  selected = null;
-  zoom = null;
+  if (!keep) {
+    zoom = null;
+    saved = null;
+  }
+  panel = { mode: "none" };
   render();
+  return true;
 }
 
 function render() {
@@ -235,31 +310,65 @@ function render() {
   $("pushed").hidden = !view.pushed;
   $("next").disabled = view.date >= view.today;
   $("date").max = view.today;
+  $("cards").replaceChildren(...view.cards.map((card) => el("option", { value: card })));
   drawChart();
+  drawAsked();
   drawEntries();
   drawNotes();
   drawWorklogs();
-  $("detail-body").className = "dim";
-  $("detail-body").textContent = "Click an entry or a bar to see what it's made of.";
+  showNothing();
 }
 
+// --- what is shown -------------------------------------------------------------------------------
+
 function range() {
-  if (zoom) return zoom;
-  return { start: Date.parse(view.bounds.start), end: Date.parse(view.bounds.end) };
+  return zoom || { start: Date.parse(view.bounds.start), end: Date.parse(view.bounds.end) };
 }
 
 function inRange(item) {
-  if (!zoom) return true;
-  return Date.parse(item.start) < zoom.end && Date.parse(item.end) > zoom.start;
+  return !zoom || (Date.parse(item.start) < zoom.end && Date.parse(item.end) > zoom.start);
 }
 
-function shown(e) {
-  return !hidden.has(e.kind) && inRange(e);
+function faded(kind) {
+  return focus.size > 0 && !focus.has(kind);
 }
 
-function hm(ms) {
-  return hhmm(new Date(ms).toISOString());
+function listed(e) {
+  return inRange(e) && !faded(e.kind);
 }
+
+function current() {
+  if (panel.mode === "question") return view.questions.find((q) => q.id === panel.id);
+  if (panel.mode === "answered") return view.answers[panel.i];
+  return null;
+}
+
+// the entries an answer gave a card: those of its lane and time that still have it, else all of them
+// there, as when the card was changed since
+function entriesOf(answer) {
+  const there = view.entries.filter((e) => overlaps(e, answer) && (!answer.lane || e.lane === answer.lane));
+  const kept = there.filter((e) => e.task === answer.task);
+  return kept.length || answer.kind === "added" ? kept : there;
+}
+
+function isSelected(n) {
+  if (panel.mode === "entry") return panel.n === n;
+  if (panel.mode === "question") return Boolean(current()?.entries.includes(n));
+  if (panel.mode === "answered") return entriesOf(current()).some((e) => e.n === n);
+  return false;
+}
+
+function mark() {
+  for (const node of document.querySelectorAll("[data-n]")) node.classList.toggle("selected", isSelected(Number(node.dataset.n)));
+  for (const node of document.querySelectorAll("[data-q]")) {
+    node.classList.toggle("selected", panel.mode === "question" && Number(node.dataset.q) === panel.id);
+  }
+  for (const node of document.querySelectorAll("[data-a]")) {
+    node.classList.toggle("selected", panel.mode === "answered" && Number(node.dataset.a) === panel.i);
+  }
+}
+
+// --- the chart -----------------------------------------------------------------------------------
 
 function ticks(start, end, inner) {
   const steps = [5, 10, 15, 30, 60, 120];
@@ -292,10 +401,9 @@ function drawChart() {
   const inner = width - labelW - 8;
   const x = (iso) => labelW + Math.min(Math.max((Date.parse(iso) - start) / (end - start), 0), 1) * inner;
   const timeAt = (px) => start + (Math.min(Math.max(px - labelW, 0), inner) / inner) * (end - start);
-  const rows = view.lanes.filter((lane) => lane === "you" || view.entries.some((e) => e.lane === lane && shown(e)));
+  const rows = view.lanes.filter((lane) => lane === "you" || view.entries.some((e) => e.lane === lane && inRange(e)));
   const height = top + rows.length * (rowH + rowGap);
-  const svg = el("svg:svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img",
-                              "aria-label": "The day's lanes" });
+  const svg = el("svg:svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "The day's lanes" });
   svg.append(el("svg:rect", { x: labelW, y: 0, width: inner, height, class: "plot", style: "fill: transparent" }));
   const { out, label } = ticks(start, end, inner);
   for (const t of out) {
@@ -303,35 +411,40 @@ function drawChart() {
     svg.append(el("svg:line", { x1: px, x2: px, y1: top - 4, y2: height, class: "grid", "pointer-events": "none" }));
     svg.append(el("svg:text", { x: px, y: 12, "text-anchor": "middle" }, label(t)));
   }
+  let from = null, brush = null, dragged = false;
   rows.forEach((lane, i) => {
     const y = top + i * (rowH + rowGap);
     svg.append(el("svg:text", { x: 0, y: y + rowH / 2 + 4, class: "lane-label" }, lane));
     if (lane === "you") {
-      for (const a of hidden.has("away") ? [] : view.away.filter(inRange)) {
+      for (const a of view.away.filter(inRange)) {
         const r = el("svg:rect", { x: x(a.start), y: y + rowH / 2 - 3, width: Math.max(x(a.end) - x(a.start), 1),
-                                   height: 6, rx: 2, style: "fill: var(--away)" });
+                                   height: 6, rx: 2, style: "fill: var(--away)", class: faded("away") ? "faded" : "" });
         r.append(el("svg:title", {}, `away ${hhmm(a.start)}-${hhmm(a.end)}`));
         svg.append(r);
       }
-      for (const g of hidden.has("gap") ? [] : view.gaps.filter(inRange)) {
+      for (const g of view.gaps.filter(inRange)) {
         const r = el("svg:rect", { x: x(g.start) + 0.75, y: y + 0.75, width: Math.max(x(g.end) - x(g.start) - 1.5, 1),
-                                   height: rowH - 1.5, rx: 3,
-                                   style: "fill: none; stroke: var(--todo); stroke-width: 1.5; stroke-dasharray: 4 3" });
+                                   height: rowH - 1.5, rx: 3, tabindex: 0, class: "gapmark" + (faded("gap") ? " faded" : ""),
+                                   style: "fill: transparent; stroke: var(--todo); stroke-width: 1.5; stroke-dasharray: 4 3" });
+        if (g.question !== null) {
+          r.setAttribute("data-q", g.question);
+          r.addEventListener("click", () => { if (!dragged) showQuestion(g.question); });
+          r.addEventListener("keydown", (ev) => { if (ev.key === "Enter") showQuestion(g.question); });
+        }
         r.append(el("svg:title", {}, `nothing active ${hhmm(g.start)}-${hhmm(g.end)}`));
         svg.append(r);
       }
     }
-    for (const e of view.entries.filter((e) => e.lane === lane && shown(e))) {
-      const r = el("svg:rect", { x: x(e.start), y: y + 2, width: Math.max(x(e.end) - x(e.start), 2), height: rowH - 4,
-                                 rx: 3, class: "bar" + (e.n === selected ? " selected" : ""), tabindex: 0,
+    for (const e of view.entries.filter((e) => e.lane === lane && inRange(e))) {
+      const r = el("svg:rect", { x: x(e.start), y: y + 2, width: Math.max(x(e.end) - x(e.start), 2), height: rowH - 4, rx: 3,
+                                 class: "bar" + (faded(e.kind) ? " faded" : ""), tabindex: 0,
                                  style: `fill: var(${COLORS[e.kind]})`, "data-n": e.n });
       r.append(el("svg:title", {}, `${e.task}  ${hhmm(e.start)}-${hhmm(e.end)} · ${e.minutes} min`));
-      r.addEventListener("click", () => { if (!dragged) select(e.n); });
-      r.addEventListener("keydown", (ev) => { if (ev.key === "Enter") select(e.n); });
+      r.addEventListener("click", () => { if (!dragged) open(e.n); });
+      r.addEventListener("keydown", (ev) => { if (ev.key === "Enter") open(e.n); });
       svg.append(r);
     }
   });
-  let from = null, brush = null, dragged = false;
   const pointX = (ev) => ev.clientX - svg.getBoundingClientRect().left;
   svg.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0 || pointX(ev) < labelW) return;
@@ -361,95 +474,300 @@ function drawChart() {
   });
   svg.addEventListener("dblclick", () => setZoom(null));
   box.append(svg);
+  mark();
 }
 
-function taskChip(task, kind) {
-  return el("span", { class: "task", style: `--c: var(${COLORS[kind]})` }, task);
+// --- the lists -----------------------------------------------------------------------------------
+
+function answerLabel(a) {
+  if (a.kind === "break") return el("span", {}, "a break");
+  if (a.kind === "dropped") return el("span", {}, `dropped${a.task && a.task !== "?" ? ` (was ${a.task})` : ""}`);
+  const now = [...new Set(entriesOf(a).map((e) => e.task))];
+  const span = el("span");
+  span.append(taskChip(now.length ? now.join(", ") : a.task, "work"));
+  if (a.kind === "added") span.append(document.createTextNode(" added"));
+  return span;
+}
+
+function drawAsked() {
+  const n = view.questions.length, done = view.answers.length;
+  $("asked-card").hidden = n === 0 && done === 0;
+  $("asked-count").textContent = String(n);
+  $("todo-badge").hidden = n === 0;
+  $("todo-badge").textContent = `${n} to answer`;
+  $("asked").replaceChildren(...view.questions.map((q) => {
+    const button = el("button", { "data-q": q.id });
+    button.append(el("span", { class: "when" }, `${hhmm(q.start)}-${hhmm(q.end)}`),
+                  el("span", { class: "name" }, q.name ? `${q.kind} · ${q.name}` : q.kind),
+                  el("span", { class: "dim" }, q.span.split(" · ")[1] || ""));
+    button.addEventListener("click", () => showQuestion(q.id));
+    const li = el("li");
+    li.append(button);
+    return li;
+  }));
+  if (n === 0) $("asked").replaceChildren(el("li", { class: "dim" }, "Nothing left to answer."));
+  $("answered-wrap").hidden = done === 0;
+  $("answered-count").textContent = String(done);
+  $("answered").replaceChildren(...view.answers.map((a, i) => {
+    const button = el("button", { "data-a": i });
+    const name = el("span", { class: "name" });
+    name.append(answerLabel(a));
+    button.append(el("span", { class: "when" }, `${hhmm(a.start)}-${hhmm(a.end)}`), name,
+                  el("span", { class: "dim" }, a.lane && a.lane !== "you" ? a.lane : ""));
+    button.addEventListener("click", () => showAnswered(i));
+    const li = el("li");
+    li.append(button);
+    return li;
+  }));
 }
 
 function drawEntries() {
   const body = $("entries");
   body.replaceChildren();
-  const rows = view.entries.filter(shown);
-  $("entries-count").textContent = rows.length === view.entries.length ? `${rows.length}`
-    : `${rows.length} of ${view.entries.length}${zoom ? `, ${hm(zoom.start)}-${hm(zoom.end)}` : ""}`;
+  const rows = view.entries.filter(listed);
+  const filtered = rows.length !== view.entries.length;
+  $("entries-count").textContent = filtered ? `${rows.length} of ${view.entries.length}${zoom ? `, ${hm(zoom.start)}-${hm(zoom.end)}` : ""}`
+                                            : String(rows.length);
   $("no-entries").hidden = rows.length > 0;
   $("no-entries").textContent = view.entries.length ? "No entry in this stretch or these categories." : "Nothing recorded that day.";
   for (const e of rows.sort((a, b) => a.start.localeCompare(b.start) || a.n - b.n)) {
-    const tr = el("tr", { tabindex: 0, "data-n": e.n, class: e.n === selected ? "selected" : "" });
+    const tr = el("tr", { tabindex: 0, "data-n": e.n });
     const task = el("td");
     task.append(taskChip(e.task, e.kind));
     tr.append(el("td", { class: "num" }, e.n), el("td", { class: "time" }, `${hhmm(e.start)}-${hhmm(e.end)}`),
               el("td", { class: "min" }, e.minutes), task, el("td", { class: "dim" }, e.sources),
               el("td", { class: e.default ? "default" : "" }, e.comment));
-    tr.addEventListener("click", () => select(e.n));
-    tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter") select(e.n); });
+    tr.addEventListener("click", () => open(e.n));
+    tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter") open(e.n); });
     body.append(tr);
   }
+  mark();
 }
 
 function drawNotes() {
-  const list = $("notes");
-  list.replaceChildren();
-  for (const g of view.gaps) list.append(el("li", {}, `Nothing active ${hhmm(g.start)}-${hhmm(g.end)}: a break, or a meeting to add?`));
-  for (const note of view.notes) list.append(el("li", {}, note));
-  const todo = view.entries.filter((e) => e.kind === "todo");
-  if (todo.length) list.append(el("li", {}, `${todo.length} ${todo.length === 1 ? "entry" : "entries"} without a card yet`));
-  $("notes-card").hidden = list.children.length === 0;
+  $("notes").replaceChildren(...view.notes.map((note) => el("li", {}, note)));
+  $("notes-card").hidden = view.notes.length === 0;
 }
 
 function drawWorklogs() {
-  const body = $("worklogs");
-  body.replaceChildren();
-  for (const w of view.worklogs) {
+  $("worklogs").replaceChildren(...view.worklogs.map((w) => {
     const card = el("td");
-    card.append(el("span", { class: "task", style: "--c: var(--work)" }, w.card));
+    card.append(taskChip(w.card, "work"));
     const tr = el("tr");
-    tr.append(card, el("td", { class: "time" }, hhmm(w.start)), el("td", { class: "time" }, fmt(w.minutes)),
-              el("td", {}, w.comment));
-    body.append(tr);
-  }
-  const totals = $("totals");
-  totals.replaceChildren();
-  for (const t of view.totals) {
-    totals.append(el("span", {}, t.what), el("span", { class: "t" }, t.time), el("span", { class: "dim" }, t.about));
-  }
+    tr.append(card, el("td", { class: "time" }, hhmm(w.start)), el("td", { class: "time" }, fmt(w.minutes)), el("td", {}, w.comment));
+    return tr;
+  }));
+  $("totals").replaceChildren(...view.totals.flatMap((t) => [
+    el("span", {}, t.what), el("span", { class: "t" }, t.time), el("span", { class: "dim" }, t.about)]));
 }
 
-async function select(n) {
-  selected = n;
-  for (const node of document.querySelectorAll("[data-n]")) {
-    node.classList.toggle("selected", Number(node.dataset.n) === n);
+// --- the panel -----------------------------------------------------------------------------------
+
+function panelStart(title, mode) {
+  panel = mode;
+  mark();
+  $("detail-title").textContent = title;
+  const body = $("detail-body");
+  body.className = "";
+  body.replaceChildren();
+  if (saved) {
+    const banner = el("div", { class: "saved", role: "status" });
+    banner.append(el("span", {}, "✓ " + saved.text));
+    const where = saved.locate && saved.locate();
+    if (where !== null && where !== undefined) {
+      const change = el("button", { class: "link", type: "button" }, "Change");
+      change.addEventListener("click", () => showAnswered(where));
+      banner.append(change);
+    }
+    body.append(banner);
   }
-  const target = $("detail-body");
-  target.className = "dim";
-  target.textContent = "Loading…";
+  return body;
+}
+
+function showNothing() {
+  const body = panelStart("Entry", { mode: "none" });
+  const text = view.questions.length
+    ? "Click a stretch to answer in the list or on the chart, or an entry to see it and change its card."
+    : view.entries.length ? "Nothing left to answer that day. Click an entry to see it and change its card." : "";
+  body.append(el("p", { class: "dim" }, text));
+}
+
+function open(n) {
+  const q = view.entries.find((e) => e.n === n)?.kind === "todo" ? view.questions.find((q) => q.entries.includes(n)) : null;
+  if (q) showQuestion(q.id);
+  else showEntry(n);
+}
+
+// a card field with suggestions, the scopes of a rule, and the buttons: send(task, scope, button)
+function answerForm({ options = [], scopes = [], drop, initial = "", give = "Give it this card", send, more = [] }) {
+  const form = el("div");
+  const input = el("input", { type: "text", list: "cards", placeholder: "a card, e.g. ABC-1", "aria-label": "Card",
+                              autocomplete: "off", spellcheck: "false" });
+  input.value = initial;
+  if (options.length) {
+    const box = el("div", { class: "options" });
+    for (const o of options) {
+      const button = el("button", { class: "option", type: "button", "aria-pressed": "false" });
+      button.append(el("strong", {}, o.task), el("span", { class: "sum" }, o.summary), el("span", { class: "why" }, o.why));
+      button.addEventListener("click", () => {
+        input.value = o.task;
+        for (const other of box.children) other.setAttribute("aria-pressed", String(other === button));
+        input.focus();
+      });
+      box.append(button);
+    }
+    input.addEventListener("input", () => { for (const other of box.children) other.setAttribute("aria-pressed", "false"); });
+    form.append(box);
+  }
+  const row = el("div", { class: "answer-row" });
+  row.append(input);
+  form.append(row);
+  let group = null;
+  if (scopes.length) {
+    group = el("div", { class: "scopes", role: "radiogroup", "aria-label": "From now on" });
+    [["This day only", ""], ...scopes.map((what, i) => [`From now on too, for ${what}`, String(i)])].forEach(([text, value]) => {
+      const label = el("label");
+      const radio = el("input", { type: "radio", name: "scope", value });
+      radio.checked = value === "";
+      label.append(radio, document.createTextNode(text));
+      group.append(label);
+    });
+    form.append(group);
+  }
+  const scope = () => {
+    const value = group?.querySelector("input:checked")?.value ?? "";
+    return value === "" ? null : Number(value);
+  };
+  const error = el("div", { class: "error", role: "alert" });
+  const actions = el("div", { class: "actions" });
+  const busy = async (button, task, chosen) => {
+    if (!task.trim()) {
+      error.textContent = "Pick a card, or type one.";
+      return;
+    }
+    const buttons = form.querySelectorAll("button");
+    const label = button.textContent;
+    buttons.forEach((b) => { b.disabled = true; });
+    button.textContent = "Saving…";
+    error.textContent = "";
+    const failed = await send(task.trim(), chosen);
+    if (failed) {
+      error.textContent = failed;
+      buttons.forEach((b) => { b.disabled = false; });
+      button.textContent = label;
+    }
+  };
+  const giveButton = el("button", { class: "primary", type: "button" }, give);
+  giveButton.addEventListener("click", () => busy(giveButton, input.value, scope()));
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") busy(giveButton, input.value, scope()); });
+  actions.append(giveButton);
+  if (drop) {
+    const dropButton = el("button", { type: "button", title: drop.title }, drop.label);
+    dropButton.addEventListener("click", () => busy(dropButton, "-", null));
+    actions.append(dropButton);
+  }
+  if (more.length) actions.append(el("span", { class: "spacer" }), ...more);
+  form.append(actions, error);
+  return { form, input };
+}
+
+async function post(path, payload) {
+  let res, body;
+  try {
+    res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ date: view.date, ...payload }) });
+    body = await res.json().catch(() => ({ error: res.statusText }));
+  } catch (e) {
+    return { error: e.message };
+  }
+  if (res.status === 409) {
+    await load(view.date, true);
+    status(body.error, true);
+    return { stale: true };
+  }
+  return res.ok ? { body } : { error: body.error };
+}
+
+function answeredAt(start, end, kinds) {
+  const i = view.answers.findIndex((a) => kinds.includes(a.kind) && overlaps(a, { start, end }));
+  return i < 0 ? null : i;
+}
+
+function showQuestion(id) {
+  const q = view.questions.find((q) => q.id === id);
+  if (!q) return showNothing();
+  const body = panelStart("To answer", { mode: "question", id });
+  const head = el("div", { class: "q-head" });
+  head.append(el("div", { class: "kind" }, `${q.kind} · ${q.span}`));
+  if (q.name) head.append(el("div", { class: "dim" }, q.name));
+  body.append(head);
+  for (const section of q.sections) {
+    const div = el("div", { class: "q-section" });
+    div.append(el("h3", {}, section.label), el("pre", {}, section.lines.join("\n")));
+    body.append(div);
+  }
+  const before = [...view.questions].reverse().find((o) => o.start < q.start);
+  const after = view.questions.find((o) => o.start > q.start);
+  const previous = el("button", { type: "button" }, "‹ Previous");
+  previous.disabled = !before;
+  previous.addEventListener("click", () => showQuestion(before.id));
+  const later = el("button", { type: "button" }, "Later ›");
+  later.disabled = !after;
+  later.addEventListener("click", () => showQuestion(after.id));
+  const { form, input } = answerForm({
+    options: q.options, scopes: q.scopes,
+    drop: q.gap ? { label: "A break", title: "No card: you weren't working" } : { label: "Drop it", title: "No card: it goes to no worklog" },
+    more: [previous, later],
+    send: async (task, scope) => {
+      const done = await post("/api/answer", { question: q.id, start: q.start, task, scope: task === "-" && q.gap ? null : scope });
+      if (done.error) return done.error;
+      if (done.stale) return null;
+      const what = task === "-" ? (q.gap ? "a break" : "dropped") : task.toUpperCase();
+      const more = done.body.changed > 1 ? ` and ${done.body.changed - 1} more of "${q.name}"` : "";
+      await settle(`${hhmm(q.start)}-${hhmm(q.end)}: ${what}${more}${scope !== null ? ", from now on too" : ""}`,
+                   () => answeredAt(q.start, q.end, q.gap ? ["break", "added"] : ["card", "dropped"]), q.start);
+      return null;
+    },
+  });
+  body.append(form);
+  input.focus();
+}
+
+// after a change: the day read again, the change on top of the panel, the next question if any
+async function settle(text, locate, after) {
+  status("Reading ActivityWatch…");
+  saved = { text, locate };
+  if (!(await load(view.date, true))) return;
+  status("Saved: " + text);
+  const next = view.questions.find((q) => q.start > after) || view.questions[0];
+  if (next) showQuestion(next.id);
+  else showNothing();
+}
+
+async function showEntry(n) {
+  const e = view.entries.find((e) => e.n === n);
+  const body = panelStart("Entry", { mode: "entry", n });
+  body.append(el("p", { class: "dim" }, "Loading…"));
   let entry;
   try {
     entry = await getJSON(`/api/entry?date=${encodeURIComponent(view.date)}&n=${n}`);
-  } catch (e) {
-    target.textContent = e.message;
+  } catch (err) {
+    body.lastChild.textContent = err.message;
     return;
   }
-  if (selected !== n) return;
-  const kind = view.entries.find((e) => e.n === n)?.kind || "work";
-  target.className = "";
-  target.replaceChildren();
+  if (panel.mode !== "entry" || panel.n !== n) return;
+  body.lastChild.remove();
   const head = el("div", { class: "detail-head" });
-  head.append(taskChip(entry.task, kind), el("span", { class: "dim" },
-              `#${entry.n} · ${hhmm(entry.start)}-${hhmm(entry.end)} · ${entry.minutes} min`));
-  target.append(head);
+  head.append(taskChip(entry.task, e?.kind), el("span", { class: "dim" }, `#${entry.n} · ${hhmm(entry.start)}-${hhmm(entry.end)} · ${entry.minutes} min`));
+  body.append(head);
   const list = el("ul", { class: "pieces" });
   for (const p of entry.pieces) {
     const li = el("li");
-    li.append(el("span", { class: "m" }, Math.round(p.seconds / 60) + "m"), el("span", { class: "what" }, p.label),
-              el("span", { class: "stream" }, p.stream));
+    li.append(el("span", { class: "m" }, Math.round(p.seconds / 60) + "m"), el("span", { class: "what" }, p.label), el("span", { class: "stream" }, p.stream));
     list.append(li);
   }
-  target.append(list);
-  if (!entry.pieces.length && !entry.glances.length) {
-    target.append(el("p", { class: "dim" }, "Nothing recorded in it: an entry you added."));
-  }
+  body.append(list);
+  if (!entry.pieces.length && !entry.glances.length) body.append(el("p", { class: "dim" }, "Nothing recorded in it: an entry you added."));
   if (entry.glances.length) {
     const seconds = entry.glances.reduce((sum, g) => sum + g.seconds, 0);
     const details = el("details", { class: "glances" });
@@ -458,42 +776,144 @@ async function select(n) {
     const glances = el("ul", { class: "pieces" });
     for (const g of entry.glances) {
       const li = el("li");
-      li.append(el("span", { class: "m" }, g.seconds + "s"), el("span", { class: "what" }, g.label || "(no title)"),
-                el("span", { class: "stream" }, g.stream));
+      li.append(el("span", { class: "m" }, g.seconds + "s"), el("span", { class: "what" }, g.label || "(no title)"), el("span", { class: "stream" }, g.stream));
       glances.append(li);
     }
     details.append(glances);
-    target.append(details);
+    body.append(details);
   }
   if (entry.prompts.length) {
-    target.append(el("h2", { style: "margin-top: 14px" }, "Prompts"));
+    body.append(el("h3", { class: "sub" }, "Prompts"));
     for (const p of entry.prompts) {
       const div = el("div", { class: "prompt" });
       div.append(el("time", {}, hhmm(p.when)), document.createTextNode(p.text.slice(0, 300)));
-      target.append(div);
+      body.append(div);
     }
+  }
+  const wrap = el("div", { class: "form" });
+  wrap.append(el("h3", { class: "sub" }, entry.task === "?" ? "Its card" : "Change its card"));
+  wrap.append(editForm([e], entry.scopes, entry.task === "?" ? "" : entry.task).form);
+  body.append(wrap);
+}
+
+function editForm(entries, scopes, initial) {
+  const first = entries[0];
+  return answerForm({
+    scopes, initial, give: "Save",
+    drop: { label: entries.length > 1 ? "Drop them" : "Drop it", title: "No card: it goes to no worklog" },
+    send: async (task, scope) => {
+      const done = await post("/api/set", { entries: entries.map((e) => ({ n: e.n, start: e.start })), task, scope });
+      if (done.error) return done.error;
+      if (done.stale) return null;
+      const what = task === "-" ? "dropped" : task.toUpperCase();
+      const span = `${hhmm(first.start)}-${hhmm(entries[entries.length - 1].end)}`;
+      saved = { text: `${span}: ${what}${scope !== null ? ", from now on too" : ""}`,
+                locate: () => answeredAt(first.start, entries[entries.length - 1].end, ["dropped"]) };
+      if (!(await load(view.date, true))) return null;
+      status("Saved: " + saved.text);
+      const again = view.entries.find((x) => x.lane === first.lane && overlaps(x, first));
+      if (again && task !== "-") showEntry(again.n);
+      else showNothing();
+      return null;
+    },
+  });
+}
+
+function showAnswered(i) {
+  const a = view.answers[i];
+  if (!a) return showNothing();
+  const body = panelStart("Answered", { mode: "answered", i });
+  const head = el("div", { class: "q-head" });
+  head.append(el("div", { class: "kind" }, `${hhmm(a.start)}-${hhmm(a.end)}${a.lane && a.lane !== "you" ? " · " + a.lane : ""}`));
+  const label = el("div");
+  label.append(answerLabel(a));
+  head.append(label);
+  body.append(head);
+  if (a.kind === "break" || a.kind === "dropped") {
+    body.append(el("p", { class: "dim" }, a.kind === "break"
+      ? "You said you weren't working then. Taking it back asks about this stretch again."
+      : "It goes to no worklog. Bringing it back gives it the card it had."));
+    const undo = el("button", { class: "primary", type: "button" }, a.kind === "break" ? "Not a break: ask again" : "Bring it back");
+    const error = el("div", { class: "error", role: "alert" });
+    undo.disabled = view.pushed;
+    if (view.pushed) error.textContent = "This day was handed over: its entries stay as sent.";
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      undo.textContent = "Saving…";
+      const done = await post("/api/undo", { kind: a.kind, start: a.start, end: a.end, lane: a.lane ?? null });
+      if (done.error) {
+        error.textContent = done.error;
+        undo.disabled = false;
+        return;
+      }
+      if (done.stale) return;
+      saved = { text: `${hhmm(a.start)}-${hhmm(a.end)}: ${a.kind === "break" ? "not a break" : "back"}`, locate: null };
+      if (!(await load(view.date, true))) return;
+      status("Saved: " + saved.text);
+      const q = view.questions.find((q) => overlaps(q, a));
+      const e = view.entries.find((e) => overlaps(e, a) && (!a.lane || e.lane === a.lane));
+      if (q) showQuestion(q.id);
+      else if (e) showEntry(e.n);
+      else showNothing();
+    });
+    const actions = el("div", { class: "actions" });
+    actions.append(undo);
+    body.append(actions, error);
+    return;
+  }
+  const entries = entriesOf(a);
+  if (!entries.length) {
+    body.append(el("p", { class: "dim" }, "Its entries aren't in the day any more."));
+    return;
+  }
+  const list = el("ul", { class: "pieces" });
+  for (const e of entries) {
+    const li = el("li");
+    const what = el("span", { class: "what" });
+    what.append(taskChip(e.task, e.kind));
+    li.append(el("span", { class: "m" }, e.minutes + "m"), what, el("span", { class: "stream" }, `#${e.n} · ${hhmm(e.start)}-${hhmm(e.end)} · ${e.sources}`));
+    list.append(li);
+  }
+  body.append(list);
+  const tasks = [...new Set(entries.map((e) => e.task))];
+  const wrap = el("div", { class: "form" });
+  wrap.append(el("h3", { class: "sub" }, "Change its card"));
+  wrap.append(editForm(entries, [], tasks.length === 1 ? tasks[0] : "").form);
+  body.append(wrap);
+}
+
+// --- controls ------------------------------------------------------------------------------------
+
+function drawFilters() {
+  for (const button of document.querySelectorAll(".filter")) button.setAttribute("aria-pressed", String(focus.has(button.dataset.kind)));
+  $("filters").classList.toggle("focusing", focus.size > 0);
+  $("show-all").hidden = focus.size === 0;
+  if (view && view.bounds) {
+    drawChart();
+    drawEntries();
   }
 }
 
-$("prev").addEventListener("click", () => view && load(shiftDate(view.date, -1)));
-$("next").addEventListener("click", () => view && load(shiftDate(view.date, 1)));
-$("today").addEventListener("click", () => load(localToday()));
-$("reload").addEventListener("click", () => load($("date").value));
-$("date").addEventListener("change", () => $("date").value && load($("date").value));
 for (const button of document.querySelectorAll(".filter")) {
   button.addEventListener("click", () => {
     const kind = button.dataset.kind;
-    if (hidden.has(kind)) hidden.delete(kind);
-    else hidden.add(kind);
-    button.setAttribute("aria-pressed", String(!hidden.has(kind)));
-    if (view && view.bounds) { drawChart(); drawEntries(); }
+    if (focus.has(kind)) focus.delete(kind);
+    else focus.add(kind);
+    drawFilters();
   });
 }
+$("show-all").addEventListener("click", () => { focus.clear(); drawFilters(); });
+$("prev").addEventListener("click", () => view && load(shiftDate(view.date, -1)));
+$("next").addEventListener("click", () => view && load(shiftDate(view.date, 1)));
+$("today").addEventListener("click", () => load(isoDate(new Date())));
+$("reload").addEventListener("click", () => load($("date").value, true));
+$("date").addEventListener("change", () => $("date").value && load($("date").value));
 $("zoom-out").addEventListener("click", () => setZoom(null));
+$("todo-badge").addEventListener("click", () => view && view.questions.length && showQuestion(view.questions[0].id));
 let resizing;
 window.addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(() => view && drawChart(), 100); });
 
-load(new URLSearchParams(location.search).get("date") || localToday());
+load(new URLSearchParams(location.search).get("date") || isoDate(new Date()));
 </script>
 </body>
 </html>

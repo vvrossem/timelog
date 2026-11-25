@@ -372,7 +372,7 @@ def main():
         "cards": "the day's card keys",
         "fetch": "ask Jira for the day's cards, candidates and worklogs (API token)",
         "push": "send the day's worklogs to Jira (-n, --dry-run: only show the plan)",
-        "serve": "the day in your browser: its lanes, entries and totals, read-only",
+        "serve": "the day in your browser: its lanes, entries and totals, and the review's questions",
         "config": "the effective settings and what's missing (--write: all of them, to the config)",
     }
     listing = "\n".join(f"  {name:9} {text}" for name, text in helps.items())

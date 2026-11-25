@@ -1,5 +1,6 @@
-"""The day in a browser: `timelog serve` shows the lanes, entries and totals of a day, read-only, on
-a page served from this machine only"""
+"""The day in a browser: `timelog serve` shows the lanes, entries and totals of a day, and asks
+about what has no card as the terminal review does, on a page served from this machine only"""
+import argparse
 import datetime as dt
 import http.server
 import importlib.resources
@@ -11,17 +12,22 @@ from . import cli
 from . import config
 from . import daily
 from . import model
+from . import questions
+from . import reviewing
 from . import sources
+from . import store
 from . import strip
 from . import sync
 from . import timeline
 
 def build(date):
-    """(day, events, gaps, notes): the day rebuilt from ActivityWatch with your corrections, as
-    `summary` builds it, and not saved"""
+    """the day rebuilt from ActivityWatch with your corrections, as the review builds it, and not
+    saved: {day, events, gaps, notes, asked}, `asked` the review's (row, question) pairs"""
     events = sources.day_events(date, model.card_regex())
     day, gaps, notes = daily.build_day(date, events)
-    return day, events, gaps, notes
+    rows, labels = reviewing.review_rows(day, gaps, events)
+    asked = reviewing.questions_of(date, day, rows, labels, events)
+    return {"day": day, "events": events, "gaps": gaps, "notes": notes, "asked": asked}
 
 
 def kind_of(entry):
@@ -36,8 +42,33 @@ def span(start, end):
     return {"start": start.isoformat(), "end": end.isoformat()}
 
 
-def day_view(date, day, events, gaps, notes):
-    """the day as the page draws it: entries numbered as `show` numbers them, per lane"""
+def question_view(i, row, q):
+    """a question of the review, numbered as `asked` orders them"""
+    return {**span(*q.mark), "id": i, "kind": q.kind, "span": q.span, "gap": q.gap, "name": q.name,
+            "entries": [] if q.gap else list(row.indices or (row.index,)),
+            "sections": [{"label": label, "lines": lines} for label, lines in q.sections if lines],
+            "options": [{"task": task, "summary": summary, "why": why} for task, summary, why in q.options],
+            "scopes": [what for what, _rule in q.scopes]}
+
+
+def answers_of(day):
+    """what you answered that day, from the day file: the breaks, the entries without a card you
+    gave one or dropped, and the entries you added"""
+    out = [{"kind": "break", "start": b0, "end": b1} for b0, b1 in day.get("breaks", [])]
+    for o in day.get("overrides", []):
+        if o["to"] == config.DROP:
+            out.append({"kind": "dropped", "start": o["start"], "end": o["end"], "lane": o.get("lane"), "task": o["task"]})
+        elif model.is_unattributed(o["task"]):
+            out.append({"kind": "card", "start": o["start"], "end": o["end"], "lane": o.get("lane"), "task": o["to"]})
+    out += [{"kind": "added", **span(e.start, e.end), "lane": "you", "task": e.task}
+            for e in day["entries"] if e.source == "manual"]
+    return sorted(out, key=lambda a: a["start"])
+
+
+def day_view(date, built):
+    """the day as the page draws it: entries numbered as `show` numbers them, per lane, and the
+    questions"""
+    day, events, gaps, notes = built["day"], built["events"], built["gaps"], built["notes"]
     entries = day["entries"]
     shown = [(n, e) for n, e in enumerate(entries, 1) if e.task != config.DROP]
     first_start = {}
@@ -60,13 +91,18 @@ def day_view(date, day, events, gaps, notes):
                      "lane": model.lane_of(e.streams), "kind": kind_of(e), "sources": cli.sources_of(e),
                      "comment": daily.comment_of(day, e.task) or "", "default": e.task not in day["comments"]}
                     for n, e in shown],
-        "gaps": [span(a, b) for a, b in gaps],
+        "gaps": [{**span(a, b), "question": next((i for i, (_row, q) in enumerate(built["asked"])
+                                                  if q.gap and f"{q.mark[0]:%H:%M}" == f"{a:%H:%M}"), None)}
+                 for a, b in gaps],  # the review asks from the minute
         "away": [span(a, b) for a, b in strip.away_spans(entries, events)],
         "totals": [{"what": what, "time": time, "about": about}
                    for what, time, about in daily.logged_rows([e for _n, e in shown], sent)],
         "worklogs": worklogs,
         "notes": list(notes),
         "pushed": daily.handed_over(day),
+        "questions": [question_view(i, row, q) for i, (row, q) in enumerate(built["asked"])],
+        "answers": answers_of(day),
+        "cards": sorted(set(reviewing.cards_to_offer(date, day))),
     }
 
 
@@ -82,11 +118,95 @@ def entry_view(day, events, n):
         "glances": [{"stream": stream, "label": label, "seconds": round(spent.total_seconds())}
                     for (stream, label), spent in glances],
         "prompts": [{"when": p.when.isoformat(), "text": p.text} for p in prompts],
+        "scopes": [what for what, _rule in reviewing.piece_scopes([entry], events)[1]],
     }
 
 
 class Invalid(ValueError):
     pass
+
+
+class Stale(ValueError):
+    """the page shows another build of the day than the server holds"""
+
+
+def answer(date, built, body):
+    """applies an answer to question `question`: a card, or `-` (a break for a stretch with nothing
+    active, else dropped), with `scope`, the rule it becomes from now on, or none. The questions about
+    the same page or window take it too, as in the terminal. Returns how many questions it answered"""
+    asked = built["asked"]
+    i = body.get("question")
+    if not isinstance(i, int) or not 0 <= i < len(asked) or asked[i][1].mark[0].isoformat() != body.get("start"):
+        raise Stale("the day changed since the page read it: refresh")
+    row, q = asked[i]
+    task = card_of(body)
+    scope = body.get("scope")
+    if scope is not None and (not isinstance(scope, int) or not 0 <= scope < len(q.scopes)
+                              or (q.gap and task == config.DROP)):
+        raise Invalid("no such scope for this question")
+    answered = [(row, task)] + [(r, task) for j, (r, other) in enumerate(asked)
+                                if j != i and not other.gap and questions.same_piece(q.name, other.name)]
+    reviewing.apply_answers(argparse.Namespace(date=date), built["day"], built["events"], answered)
+    if scope is not None:
+        daily.add_rule({**q.scopes[scope][1], "card": task})
+    return len(answered)
+
+
+def card_of(body):
+    task = questions.task_of(str(body.get("task", "")).strip())
+    if task is None:
+        raise Invalid("a card like ABC-1, or -")
+    return task
+
+
+def set_entries(date, built, body):
+    """gives entries a card, or drops them (`-`), as `set --entry N=CARD` does; with `scope`, the
+    rule it becomes from now on, for the piece holding most of them. Returns how many it changed"""
+    day, events = built["day"], built["events"]
+    wanted = body.get("entries")
+    if not isinstance(wanted, list) or not wanted:
+        raise Invalid("no entry")
+    numbers = []
+    for item in wanted:
+        n = item.get("n") if isinstance(item, dict) else None
+        if not isinstance(n, int) or not 1 <= n <= len(day["entries"]) \
+                or day["entries"][n - 1].start.isoformat() != item.get("start"):
+            raise Stale("the day changed since the page read it: refresh")
+        numbers.append(n)
+    task = card_of(body)
+    line = [day["entries"][n - 1] for n in numbers]
+    scope, scopes = body.get("scope"), reviewing.piece_scopes(line, events)[1]
+    if scope is not None and (not isinstance(scope, int) or not 0 <= scope < len(scopes) or task == config.DROP):
+        raise Invalid("no such scope for these entries")
+    if task == config.DROP:
+        daily.correct(day, {}, set(numbers))
+    else:
+        daily.correct(day, {n: task for n in numbers}, set())
+    reviewing.saved_then_fetched(argparse.Namespace(date=date), day, events)
+    if scope is not None:
+        daily.add_rule({**scopes[scope][1], "card": task})
+    return len(numbers)
+
+
+def undo(date, built, body):
+    """takes back a break, so that its stretch is asked about again, or a drop, so that its entry
+    comes back as it was"""
+    day = built["day"]
+    if daily.handed_over(day):
+        raise Invalid("this day was handed over: its entries stay as sent, `timelog day --rebuild` builds it again")
+    kind, start, end = body.get("kind"), body.get("start"), body.get("end")
+    if kind == "break" and [start, end] in day.get("breaks", []):
+        day["breaks"].remove([start, end])
+    elif kind == "dropped":
+        found = next((o for o in day.get("overrides", []) if o["to"] == config.DROP and o["start"] == start
+                      and o["end"] == end and o.get("lane") == body.get("lane")), None)
+        if found is None:
+            raise Stale("the day changed since the page read it: refresh")
+        day["overrides"].remove(found)
+    else:
+        raise Stale("the day changed since the page read it: refresh")
+    store.save_day(date, day, quiet=True)
+    return 1
 
 
 def date_of(query):
@@ -102,7 +222,7 @@ def date_of(query):
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    built = {}  # the last day built, by date: entry N is the one the page shows
+    built = {}  # the last day built, by date: entry N and question I are the ones the page shows
 
     def log_message(self, *args):
         pass
@@ -119,9 +239,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self):
+    def ours(self):
+        """the Host is this server's, against DNS rebinding"""
         port = self.server.server_address[1]
-        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):  # DNS rebinding
+        return self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
+
+    def day(self, date):
+        if date not in self.built:
+            self.built.clear()
+            self.built[date] = build(date)
+        return self.built[date]
+
+    def do_GET(self):
+        if not self.ours():
             return self.send(403, {"error": "this page answers on 127.0.0.1 only"})
         url = urllib.parse.urlsplit(self.path)
         query = urllib.parse.parse_qs(url.query)
@@ -131,15 +261,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                  "text/html")
             if url.path == "/api/day":
                 date = date_of(query)
-                self.built.clear()
-                self.built[date] = build(date)
-                return self.send(200, day_view(date, *self.built[date]))
+                self.built.clear()  # read ActivityWatch again
+                return self.send(200, day_view(date, self.day(date)))
             if url.path == "/api/entry":
                 date = date_of(query)
-                if date not in self.built:
-                    self.built.clear()
-                    self.built[date] = build(date)
-                day, events, _gaps, _notes = self.built[date]
+                day, events = self.day(date)["day"], self.day(date)["events"]
                 n = query.get("n", [""])[0]
                 if not n.isdigit() or not 1 <= int(n) <= len(day["entries"]):
                     raise Invalid(f"no entry {n} on {date}")
@@ -150,10 +276,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except SystemExit as e:  # ActivityWatch doesn't answer, the config can't be read
             return self.send(503, {"error": str(e.code).removeprefix("# ")})
 
-    def refuse(self):
-        self.send(405, {"error": "this page only reads"})
+    def do_POST(self):
+        """an answer, from the page itself: another site can make your browser post here, but not
+        with its Origin, nor as JSON without asking first"""
+        port = self.server.server_address[1]
+        if not self.ours() or self.headers.get("Origin") not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
+            return self.send(403, {"error": "answers come from the page only"})
+        if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+            return self.send(415, {"error": "JSON only"})
+        path = urllib.parse.urlsplit(self.path).path
+        if path not in ACTIONS:
+            return self.send(404, {"error": f"no {path}"})
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            if length > 65536:
+                raise Invalid("too long")
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise Invalid("a JSON object")
+            date = date_of({"date": [str(body.get("date", ""))]})
+            if date not in self.built:
+                raise Stale("the day changed since the page read it: refresh")
+            count = ACTIONS[path](date, self.built[date], body)
+            self.built.clear()  # rebuilt with the answer on the next read
+            return self.send(200, {"changed": count})
+        except Stale as e:
+            return self.send(409, {"error": str(e)})
+        except (Invalid, json.JSONDecodeError) as e:
+            return self.send(400, {"error": str(e)})
+        except SystemExit as e:
+            return self.send(503, {"error": str(e.code).removeprefix("# ")})
 
-    do_POST = do_PUT = do_PATCH = do_DELETE = refuse
+    def refuse(self):
+        self.send(405, {"error": "not here"})
+
+    do_PUT = do_PATCH = do_DELETE = refuse
+
+
+ACTIONS = {"/api/answer": answer, "/api/set": set_entries, "/api/undo": undo}
 
 
 def server(port):

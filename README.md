@@ -194,7 +194,7 @@ the lines to type into Tempo.
 | `timelog` | the questions above, then the comments, then the push |
 | `/timelog` in Claude Code | the same, as a conversation |
 | `timelog summary` | how long you've worked so far, per card, without questions |
-| `timelog serve` | the day in your browser: its lanes, entries and totals, read-only for now |
+| `timelog serve` | the day in your browser: its lanes and entries, and the same questions to answer |
 | `timelog friday`, `timelog 14.11.26` | another day (`timelog --help` lists the date forms) |
 
 Run it as often as you like: it keeps what you've already answered. Missed days come first, the
