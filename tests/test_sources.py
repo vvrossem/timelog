@@ -127,6 +127,28 @@ def test_a_session_window_has_the_whole_title_vs_code_cut(aw):
         "Stock report … - shop_odoo - Visual Studio Code"]  # no session of that title: kept as VS Code shows it
 
 
+def test_a_session_window_has_its_card_on_a_day_without_its_turns(aw):
+    aw["agent.turn"] = [turn("09:00", 10, "s1", "invoice export for A", title="Invoice export to the bank"),
+                        turn("09:20", 10, "s2", "review for B", title="shop_odoo review of PR 12")]
+    aw["currentwindow"] = [aw_event("10:00", 12, app="Code", title="Invoice export … - shop_odoo - Visual Studio Code"),
+                           aw_event("10:12", 18, app="Code", title="shop_odoo - Visual Studio Code")]
+    # the day from 10:00: s1 and s2 worked before it
+    out, _info = activitywatch.combine(at("10:00"), at("23:59"), re.compile(r"\b[AB]\b"), "me")
+    assert not [e for e in out if e.kind == "aw-agent"]
+    # a window named like the start of s2's title is the folder's, not s2's
+    assert [(f"{e.when:%H:%M}", e.card) for e in out if e.kind == "focus"] == [("10:00", "A"), ("10:12", None)]
+
+
+def test_a_session_title_with_a_dash_still_names_its_window(aw):
+    aw["agent.turn"] = [turn("09:00", 10, "s1", "stock report for A", title="Stock report fix - Odoo 17")]
+    aw["currentwindow"] = [aw_event("10:00", 12, app="Code", title="Stock report fix - Odoo 17 - shop_odoo - Visual Studio Code"),
+                           aw_event("10:12", 18, app="Code", title="Stock report fix - Od… - shop_odoo - Visual Studio Code")]
+    out, _info = activitywatch.combine(at("10:00"), at("23:59"), re.compile(r"\bA\b"), "me")
+    # the cut title made whole, the two windows are one piece
+    assert [(f"{e.when:%H:%M}", f"{e.until:%H:%M}", e.card, e.text) for e in out if e.kind == "focus"] == [
+        ("10:00", "10:30", "A", "Stock report fix - Odoo 17 - shop_odoo - Visual Studio Code")]
+
+
 @pytest.mark.parametrize("info, expected", [
     ({"headRefName": "ghi-310-stock_report", "title": "Stock report"}, "GHI-310"),
     ({"headRefName": "master-fix-CA-cert", "title": "[BUILD] fix CA",
