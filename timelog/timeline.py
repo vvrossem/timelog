@@ -102,7 +102,23 @@ def fold(events):
                     out.append(e._replace(when=a, until=b))
                 continue
             out.append(e._replace(when=a, until=b, card=folded[0], review=folded[1], stream=f"{e.stream} (folded)"))
-    return others + out
+    return others + [part for e in out for part in into_calls(e, calls)]
+
+
+def into_calls(e, calls):
+    """a piece of your lane cut by the calls: while one runs you're in it, so the piece counts for its
+    card, even if it shows another one or is an agent's window; your lane has one card at a time"""
+    inside = {x for c in calls for x in (c.when, c.until) if e.when < x < e.until}
+    cuts = sorted({e.when, e.until} | inside)
+    out = []
+    for a, b in zip(cuts, cuts[1:]):
+        call = next((c for c in calls if c.when <= a < c.until), None)
+        if call and (e.card, e.review) != (call.card, call.review):
+            out.append(e._replace(when=a, until=b, card=call.card, review=call.review,
+                                  stream=f"{e.stream.removesuffix(' (folded)')} (folded)"))
+        else:
+            out.append(e._replace(when=a, until=b))
+    return out
 
 
 def between_turns(e, turns):
