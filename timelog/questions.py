@@ -17,12 +17,14 @@ KEY = re.compile(r"^([A-Za-z][A-Za-z0-9]*-\d+)\b")
 
 
 class Question(NamedTuple):
-    title: str  # what the line is: its times, length and task, or its session
-    details: list  # what it's made of, a line each
-    options: list  # (task, why it's offered)
+    kind: str  # what the line is: "your windows", "call", "agent <session>", "nothing active"
+    span: str  # its times and length
+    sections: list  # (what it says, [lines]): what was open, the cards shown, around it, the prompts
+    options: list  # (task, its Jira summary, why it's offered)
     scopes: list  # (what it covers, rule without its card): the rules an answer can become
     gap: bool = False  # nothing active: a card makes a manual entry, Enter (or -) makes it a break
     name: str = ""  # the page, window or session it's mostly made of: an answer carries over to its namesakes
+    mark: tuple = ()  # (start, end) to show on the day strip
 
 
 def same_piece(a, b):
@@ -78,7 +80,39 @@ def keys(*pairs):
     of keys doing the same"""
     def shown(key):
         return " or ".join(style.paint(f"[{k}]", "bold") for k in (key if isinstance(key, tuple) else (key,)))
-    return "".join(f"   {shown(key)} {style.paint(what, 'dim')}" for key, what in pairs)
+    return style.paint(" · ", "dim").join(f"{shown(key)} {style.paint(what, 'dim')}" for key, what in pairs)
+
+
+def width():
+    """the width of a question's rule"""
+    return min(style.columns() or 72, 100)
+
+
+def header(n, total, q):
+    head = f"─── {n} of {total} ── "
+    rest = f" ── {q.span} "
+    line = style.paint(head, "dim") + style.paint(q.kind, "bold") + style.paint(" ── ", "dim") + f"{q.span} "
+    return line + style.paint("─" * max(width() - len(head) - len(q.kind) - len(rest), 3), "dim")
+
+
+def show_sections(sections):
+    for label, lines in sections:
+        if lines:
+            print(style.paint(f"  {label}", "dim"))
+            for line in lines:
+                print(f"      {line}")
+
+
+def show_options(options):
+    card = min(max((len(t) for t, _s, _w in options), default=0), 24)
+    why = max((len(w) for _t, _s, w in options), default=0)
+    room = style.columns()  # the summaries are cut to keep the reasons on the line
+    summary = max((len(s) for _t, s, _w in options), default=0)
+    summary = min(summary, max(room - 3 - len(str(len(options))) - 2 - card - 2 - 2 - why, 12)) if room else summary
+    for i, (task, text, reason) in enumerate(options, 1):
+        shown, text = style.clip(task, card), style.clip(text, summary)
+        text = f"{text.ljust(summary)}  " if summary else ""  # no column when no card has one
+        print(f"   {i}  {style.pad(shown, style.task(shown), card)}  {text}{style.paint(reason, 'dim')}".rstrip())
 
 
 def read(prompt, answers, rules):
@@ -91,25 +125,27 @@ def read(prompt, answers, rules):
     return answer
 
 
-def ask(questions):
+def ask(questions, strip=None):
     """({question number: task}, [rules with their card]) from your answers. A card given to a page,
-    window or session is given to its later namesakes too, and offered to the questions after it"""
+    window or session is given to its later namesakes too, and offered to the questions after it.
+    `strip(mark, answers)` gives the day strip with the answers so far and the question's time marked"""
     answers, rules, typed, carried = {}, [], [], {}
     for n, q in enumerate(questions):
-        print(style.paint(f"\n[{n + 1}/{len(questions)}] ", "dim") + q.title)
+        print("\n" + header(n + 1, len(questions), q))
         if n in carried:
             task, k = carried[n]
             answers[n] = task
             print(f"  {style.task(task)}  {style.paint(f'as [{k + 1}], the same {q.name!r}', 'dim')}")
             continue
-        for line in q.details:
-            print(style.paint(f"      {line}", "dim"))
-        options = q.options + [(t, "given above") for t in typed if t not in {o for o, _why in q.options}]
-        for i, (task, why) in enumerate(options, 1):
-            print(f"  {i}) {style.task(task)}  {style.paint(why, 'dim')}")
+        for line in (strip(q.mark, dict(answers)) if strip and q.mark else []):
+            print(f"  {line}")
+        show_sections(q.sections)
+        options = q.options + [(t, "", "given above") for t in typed if t not in {o for o, _s, _w in q.options}]
+        print()
+        show_options(options)
         numbers = (f"1-{len(options)}",) if len(options) > 1 else ("1",) if options else ()
-        print(keys(("Enter", "a break" if q.gap else "later"), ((*numbers, "ABC-1"), "that card"),
-                   *([] if q.gap else [("-", "drop")]), ("e", "editor"), ("q", "stop"))[1:])
+        print("\n  " + keys(((*numbers, "ABC-1"), "card"), ("Enter", "a break" if q.gap else "later"),
+                            *([] if q.gap else [("-", "drop")]), ("e", "editor"), ("q", "stop")))
         while True:
             answer = read("> ", answers, rules)
             if not answer:
@@ -137,11 +173,11 @@ def ask(questions):
 
 
 def ask_scope(scopes, answers, rules):
-    """the rule an answer should become, or None for that day only"""
+    """the rule an answer should become, or None for that day only (n, or Enter)"""
     if len(scopes) == 1:
-        print(f"  From now on too, for {scopes[0][0]}?" + keys(("y", "yes"), ("Enter", "today only")))
+        print(f"  From now on too, for {scopes[0][0]}?   " + keys(("y", "yes"), ("n", "no")))
     else:
-        print("  From now on too?" + keys((f"1-{len(scopes)}", "for"), ("Enter", "today only")))
+        print("  From now on too?   " + keys((f"1-{len(scopes)}", "for"), ("n", "no")))
         for i, (what, _rule) in enumerate(scopes, 1):
             print(f"    {i}) {what}")
     while True:
@@ -152,21 +188,30 @@ def ask_scope(scopes, answers, rules):
             answer = "1"
         if answer.isdigit() and 1 <= int(answer) <= len(scopes):
             return scopes[int(answer) - 1][1]
-        print(style.paint("  y or Enter" if len(scopes) == 1 else f"  a number from 1 to {len(scopes)}, or Enter", "yellow"))
+        print(style.paint("  y or n" if len(scopes) == 1 else f"  a number from 1 to {len(scopes)}, or n", "yellow"))
 
 
 def ask_comments(lines):
-    """{task: comment} you changed; lines: (task, time, comment, where: when and what its time was)"""
+    """{task: comment} you changed; lines: (task, start, time, comment, where: when and what its time
+    was), in order of time. The list shows once, then each comment you change"""
     changed = {}
-    width = max((len(task) for task, *_rest in lines), default=0)
+    card = max((len(task) for task, *_rest in lines), default=0)
     number = len(str(len(lines)))
+    indent = 2 + number + 2 + 5 + 2 + card + 2 + 4 + 2  # under the comment
+    room = style.columns()
+
+    def line(i, mark=""):
+        task, start, time, comment, _where = lines[i - 1]
+        text = changed.get(task, comment) or style.paint("(none)", "yellow")
+        return f"  {i:{number}}  {style.paint(start, 'dim')}  {style.pad(task, style.task(task), card)}  {time}  {text}{mark}"
+
+    total = sum(int(time.split("h")[0]) * 60 + int(time.split("h")[1]) for _t, _s, time, _c, _w in lines)
+    print("\n" + style.paint("Comments", "bold") + style.paint(f"   {total // 60}h{total % 60:02d} in all", "dim"))
+    for i, (_task, _start, _time, _comment, where) in enumerate(lines, 1):
+        print(line(i))
+        if where:
+            print(" " * indent + style.paint(style.clip(where, room and room - indent), "dim"))
     while True:
-        print(style.paint("\nComments:", "bold"))
-        for i, (task, time, comment, where) in enumerate(lines, 1):
-            text = changed.get(task, comment) or style.paint("(none)", "yellow")
-            print(f"  {i:{number}}) {style.pad(task, style.task(task), width)}  {time}  {text}")
-            if where:
-                print(" " * (number + 4) + style.paint(where, "dim"))
         try:
             answer = input("Enter to keep them, or a number to change one: ").strip()
         except EOFError:
@@ -175,5 +220,6 @@ def ask_comments(lines):
             return changed
         if not (answer.isdigit() and 1 <= int(answer) <= len(lines)):
             continue
-        task, _time, comment, _where = lines[int(answer) - 1]
+        task, _start, _time, comment, _where = lines[int(answer) - 1]
         changed[task] = prefilled(f"{task} = ", changed.get(task, comment) or "").strip()
+        print(line(int(answer), "  " + style.paint("✓ changed", "green")))

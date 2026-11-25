@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from timelog import cli, config, jira, jira_rest, model, push, questions, review, reviewing, sources, store, sync, timeline
+from timelog import cli, config, jira, jira_rest, model, push, questions, review, reviewing, sources, store, strip, sync, timeline
 from helpers import DATE, at, ev, mine, written_rules, ns, review_day, on, asked_day
 
 
@@ -88,14 +88,19 @@ def test_review_sends_an_unreadable_file_back_to_the_editor_and_can_be_cancelled
 
 def test_the_review_asks_in_the_terminal(days, monkeypatch, capsys):
     # 09:30-10:00 a break; Q4 planning, typed in lower case, for good on that window (its only scope:
-    # y); 10:30-11:00 was ABC-1; news dropped that day only; then a comment, and no Tempo
+    # y); 10:30-11:00 was ABC-1; news dropped that day only (n); then a comment, and no Tempo
     done, _prompts, _seen = asked_day(days, monkeypatch, [
-        "", "tool-1: planning", "y", "abc-1", "-", "", "2", "planning, see PR #3", "", "n"])
+        "", "tool-1: planning", "y", "abc-1", "-", "n", "2", "planning, see PR #3", "", "n"])
     out = capsys.readouterr().out
-    assert done and "nothing active: a break, or what you did?" in out
-    assert re.search(r"1\) ABC-1  just before\n  2\) ADM-1  admin", out)  # the options of Q4 planning
-    assert 'From now on too, for this window: "Q4 planning.ods"?   [y] yes   [Enter] today only' in out
-    assert "[Enter] a break   [1-2] or [ABC-1] that card   [e] editor   [q] stop" in out
+    assert done and "─── 1 of 4 ── nothing active ── 09:30-10:00 · 0h30 ─" in out
+    assert re.search(r"   1  ABC-1  just before\n   2  ADM-1  admin", out)  # the options of Q4 planning
+    assert 'From now on too, for this window: "Q4 planning.ods"?   [y] yes · [n] no' in out
+    assert "[1-2] or [ABC-1] card · [Enter] a break · [e] editor · [q] stop" in out
+    assert "  Tue 20.10  09    10    11    12\n  you        ······???···?·····\n" in out  # the day strip
+    assert "\n                   ^^^\n  what was open\n       30m  Q4 planning.ods\n" in out  # Q4 planning on it
+    # redrawn with each answer: Q4 planning and 10:30-11:00 given cards, the break left as it was
+    assert "─── 4 of 4 ── your windows ── 11:00-11:10 · 0h10 ─" in out.split("── 3 of 4")[1]
+    assert "  you        ······▓▓▓▓▓▓?·····\n" in out.split("── 4 of 4")[1]
     assert [(e.task, f"{e.start:%H:%M}", f"{e.end:%H:%M}", e.source) for e in store.load_day(DATE)["entries"]] == [
         ("ABC-1", "09:00", "09:30", "auto"), ("TOOL-1: planning", "10:00", "10:30", "auto"),
         ("ABC-1", "10:30", "11:00", "manual")]
@@ -112,11 +117,11 @@ def test_the_review_goes_to_the_editor_or_stops_keeping_your_answers(days, monke
     done, prompts, seen = asked_day(days, monkeypatch, ["", "q"])
     out = capsys.readouterr().out
     assert not done and not seen and len(prompts) == 2 and "your answers are kept" in out
-    assert "[1/2] 10:30-11:00" in out
-    # a wrong answer is asked again; a scope answer other than y or Enter too
+    assert "─── 1 of 2 ── nothing active ── 10:30-11:00" in out
+    # a wrong answer is asked again; a scope answer other than y, n or Enter too
     done, prompts, _seen = asked_day(days, monkeypatch, ["nope", "ADM-1", "x", "", "", "n"])
     out = capsys.readouterr().out
-    assert "[1/1] 11:00-11:10" in out and "a number from 1 to" in out and "y or Enter" in out and len(prompts) == 6
+    assert "─── 1 of 1 ── your windows ── 11:00-11:10" in out and "a number from 1 to" in out and "y or n" in out and len(prompts) == 6
 
 
 def test_review_says_why_a_file_is_unreadable_and_stops_if_you_say_so(days, monkeypatch, capsys):
@@ -263,14 +268,14 @@ def test_the_cards_you_give_are_asked_to_jira(days, monkeypatch):
 
 
 def test_a_card_given_to_a_session_goes_to_its_window_and_is_offered_after(monkeypatch, capsys):
-    asked = [questions.Question("agent a2", [], [("ADM-1", "admin")], [], name="cosanum_odoo pull request 3851"),
-             questions.Question("09:20-09:26", [], [("ADM-1", "admin")], [], name="Slack"),
-             questions.Question("09:29-09:34", [], [], [], name="cosanum_odoo pull reques…")]
+    asked = [questions.Question("agent a2", "", [], [("ADM-1", "", "admin")], [], name="cosanum_odoo pull request 3851"),
+             questions.Question("your windows", "09:20-09:26", [], [("ADM-1", "", "admin")], [], name="Slack"),
+             questions.Question("your windows", "09:29-09:34", [], [], [], name="cosanum_odoo pull reques…")]
     answers = ["abc-7", ""]
     monkeypatch.setattr("builtins.input", lambda prompt: answers.pop(0))
     assert questions.ask(asked) == ({0: "ABC-7", 2: "ABC-7"}, [])
     out = capsys.readouterr().out
-    assert "1) ADM-1  admin\n  2) ABC-7  given above\n" in out  # the card typed, offered after
+    assert "   1  ADM-1  admin\n   2  ABC-7  given above\n" in out  # the card typed, offered after
     assert "ABC-7  as [1], the same 'cosanum_odoo pull reques…'" in out
     assert not questions.same_piece("Slack", "Slack - dev…") and not questions.same_piece("", "")
 
@@ -279,8 +284,8 @@ def test_a_day_pushed_then_worked_on_asks_only_about_the_work_after(days, monkey
     # 10:00-10:30 left without a card before the push here: dropped, then the comments and Tempo
     done, prompts, _seen = asked_day(days, monkeypatch, ["ABC-2", "", "y", "", ""], late=[(at("11:00"), at("11:10"))])
     out = capsys.readouterr().out
-    assert "[1/1] 11:00-11:10" in out and len(prompts) == 5
-    assert re.search(r"Comments:\n  1\) ABC-2  0h10", out) and "ABC-1  " not in out.split("Comments:")[1]
+    assert "─── 1 of 1 ── your windows ── 11:00-11:10" in out and len(prompts) == 5
+    assert re.search(r"Comments   0h10 in all\n  1  11:00  ABC-2  0h10", out) and "ABC-1  " not in out.split("Comments")[1]
 
 
 def test_the_comments_show_what_jira_gets(days):
@@ -293,18 +298,20 @@ def test_the_plan_tells_the_time_its_worklogs_hold(capsys):
     sync.print_plan([push.Action(action, "ABC-1", at(hhmm), minutes, "", "1")
                      for action, hhmm, minutes in (("add", "09:00", 30), ("keep", "10:00", 15), ("delete", "11:00", 10),
                                                    ("foreign", "12:00", 20))])
-    assert "1 add, 1 delete, 1 foreign, 1 keep; timelog's worklogs once sent: 0h45" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.startswith("Jira   add 1 · delete 1 · keep 1 · foreign 1   → 0h45\n")  # what Jira will hold
+    assert "  − delete   11:00-11:10  0h10  ABC-1" in out
 
 
 def test_a_line_left_for_later_is_dropped_or_stops_before_the_comments(days, monkeypatch, capsys):
     # Q4 planning and news left for later, kept: no comments asked, nothing pushed
     done, prompts, _seen = asked_day(days, monkeypatch, ["", "", "", "", ""])
     out = capsys.readouterr().out
-    assert done and "[Enter] later" in out and "Comments:" not in out
+    assert done and "[Enter] later" in out and "Comments" not in out
     assert "Drop them (0h40) and go on? [y/N] " in prompts[-1] and "run `timelog 20.10` again" in out
     # then dropped: the comments, then the lines for Tempo
     done, prompts, _seen = asked_day(days, monkeypatch, ["", "", "y", "", "n"])  # the breaks aren't asked again
-    assert "Comments:" in capsys.readouterr().out
+    assert "Comments" in capsys.readouterr().out
     assert [e.task for e in store.load_day(DATE)["entries"]] == ["ABC-1"]
 
 
@@ -316,7 +323,7 @@ def test_no_rule_is_offered_for_a_pr(days, monkeypatch, capsys):
     day, gaps, _notes = reviewing.daily.build_day(DATE, events)
     rows, labels = reviewing.review_rows(day, gaps, events)
     asked = [q for _row, q in reviewing.questions_of(DATE, day, rows, labels, events)]
-    assert [(q.scopes, q.details[0].split("  ", 1)[1]) for q in asked if not q.gap] == [
+    assert [(q.scopes, q.sections[0][1][0].split("  ", 1)[1]) for q in asked if not q.gap] == [
         ([], "cosanum_odoo pull request 3851"), ([], "cosanum_odoo pull request 3851")]  # the window's name made whole
 
 
@@ -325,7 +332,7 @@ def test_the_summaries_offered_are_whole_unless_a_width_is_set(monkeypatch):
     known = {"ABC-1": {"summary": "Address on reports does not fit in the window"}}
     for width, shown in ((None, "Address on reports does not fit in the window"), (12, "Address on …")):
         monkeypatch.setattr(config, "SUMMARY_WIDTH", width)
-        assert reviewing.likely_cards(entries, at("09:30"), at("10:00"), known)[0] == ("ABC-1", f"{shown} · just before")
+        assert reviewing.likely_cards(entries, at("09:30"), at("10:00"), known)[0] == ("ABC-1", shown, "just before")
     assert config.problems({"summary_width": 0}) == ["summary_width: 0 is not a number of characters above 0, or null"]
     assert config.problems({"summary_width": 60}) == config.problems({"summary_width": None}) == []
 
@@ -337,8 +344,9 @@ def test_the_comments_tell_when_and_where_each_task_was(days, monkeypatch, capsy
     where = reviewing.where_of(day, "ABC-1", events)
     assert where == "09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev"
     monkeypatch.setattr("builtins.input", lambda prompt: "")
-    questions.ask_comments([("ABC-1", "0h30", "invoice export", where)])
-    assert "1) ABC-1  0h30  invoice export\n     09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev\n" in capsys.readouterr().out
+    questions.ask_comments([("ABC-1", "09:00", "0h30", "invoice export", where)])
+    assert ("  1  09:00  ABC-1  0h30  invoice export\n" + " " * 25 + "09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev\n"
+            in capsys.readouterr().out)
 
 
 def test_the_questions_tell_what_little_there_is(days, monkeypatch):
@@ -352,10 +360,53 @@ def test_the_questions_tell_what_little_there_is(days, monkeypatch):
     monkeypatch.setattr(sources, "day_events", lambda date, cards: events)
     day, gaps, _notes = reviewing.daily.build_day(DATE, events)
     rows, labels = reviewing.review_rows(day, gaps, events)
-    asked = {q.title.split("  ")[0]: q.details for _row, q in reviewing.questions_of(DATE, day, rows, labels, events)}
-    assert asked["09:20-10:00"] == ["away from the keyboard the whole time", "until 09:20  shop_odoo (ABC-1)",
-                                    "from 10:00  Gmail"]
+    asked = {q.span.split(" ")[0]: {label: lines for label, lines in q.sections if lines}
+             for _row, q in reviewing.questions_of(DATE, day, rows, labels, events)}
+    assert asked["09:20-10:00"] == {"while it lasted": ["away from the keyboard the whole time"],
+                                    "around it": ["until 09:20  shop_odoo (ABC-1)", "from  10:00  Gmail"]}
     # glances only: shown anyway, with the card a glance showed, which gives no time
-    assert asked["10:00-10:01"] == [" 20s  Slack", " 15s  Gmail", "cards shown: XYZ-9 10s (Gmail)"]
+    assert asked["10:00-10:01"] == {"what was open": [" 20s  Slack", " 15s  Gmail"],
+                                    "cards shown": ["XYZ-9   10s  Gmail"],
+                                    "around it": ["until 09:20  shop_odoo (ABC-1)", "from  10:01  stock_odoo (ABC-2)"]}
     assert reviewing.gist('"""\n<ide_selection>x</ide_selection>\ninvoice export') == "invoice export"
     assert reviewing.gist('<agent-message from="a1">report</agent-message>') == ""
+
+
+def test_the_day_strip_shows_each_lane_and_the_question(monkeypatch):
+    monkeypatch.setattr(strip.style, "columns", lambda: 100)
+    entries = [model.Entry("ABC-1", at("09:00"), at("09:30"), "auto", ("me focus",)),
+               model.Entry("BS-1", at("09:30"), at("09:50"), "auto", ("call",)),
+               model.Entry("?", at("10:20"), at("10:21"), "auto", ("me focus",)),  # a minute to answer shows
+               model.Entry("ABC-1", at("09:00"), at("09:20"), "auto", ("claude s1",))]
+    away = [ev("09:50", None, "afk", kind="away")._replace(until=at("10:20"))]
+    assert strip.lines("Tue 20.10", entries, away, [], mark=(at("10:20"), at("10:21"))) == [
+        "Tue 20.10  09    10    11",
+        "you        ▓▓▓██░░░?···",
+        "agents     ▒▒··········",
+        "                   ^"]
+
+
+def test_the_comments_show_once_then_only_the_one_changed(monkeypatch, capsys):
+    answers = ["1", "invoice export to the bank", ""]
+    monkeypatch.setattr("builtins.input", lambda prompt: answers.pop(0))
+    monkeypatch.setattr(questions, "prefilled", lambda prompt, text: answers.pop(0))
+    changed = questions.ask_comments([("ABC-1", "09:00", "0h30", "invoice export", ""),
+                                      ("DEF-2", "10:00", "1h00", "", "")])
+    out = capsys.readouterr().out
+    assert changed == {"ABC-1": "invoice export to the bank"}
+    assert out == ("\nComments   1h30 in all\n"
+                   "  1  09:00  ABC-1  0h30  invoice export\n"
+                   "  2  10:00  DEF-2  1h00  (none)\n"
+                   "  1  09:00  ABC-1  0h30  invoice export to the bank  ✓ changed\n")
+
+
+def test_the_day_strip_fits_the_terminal(monkeypatch):
+    def strip_of(columns, start, end):
+        monkeypatch.setattr(strip.style, "columns", lambda: columns)
+        return strip.lines("Tue 20.10", [model.Entry("ABC-1", at(start), at(end), "auto", ("me focus",))], [], [])
+    # an 11-hour day on 80 columns: 15 minutes a cell, and the last hour's label still on the line
+    lines = strip_of(80, "08:00", "19:00")
+    assert lines[0] == "Tue 20.10  08  09  10  11  12  13  14  15  16  17  18  19"
+    assert max(len(line) for line in lines) + strip.INDENT <= 80
+    # 30 minutes a cell: every second hour, so that the labels don't touch
+    assert strip_of(60, "02:00", "22:00")[0] == "Tue 20.10  02  04  06  08  10  12  14  16  18  20  22"

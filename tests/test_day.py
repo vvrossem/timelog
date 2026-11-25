@@ -246,9 +246,10 @@ def test_logged_over_the_wall_clock_tells_what_overlaps():
     entries = [model.Entry("ABC-1", at("09:00"), at("10:00"), "auto", ("claude s1",)),
                model.Entry("ABC-1", at("09:30"), at("10:00"), "auto", ("me focus",)),  # you, with its agent
                model.Entry("DEF-2", at("09:50"), at("10:10"), "auto", ("claude s2",))]  # in parallel
-    assert daily.logged_over(entries) == ("1h50 over 1h10 of wall clock "
-                                          "(0h30 same card in parallel lanes, 0h10 different cards in parallel)")
-    assert daily.logged_over(entries[:1]) == "1h00 over 1h00 of wall clock"
+    assert daily.logged_rows(entries) == [("logged", "1h50", "over 1h10 of wall clock"),
+                                          ("same card", "0h30", "in parallel lanes"),
+                                          ("other cards", "0h10", "at the same time")]
+    assert daily.logged_rows(entries[:1]) == [("logged", "1h00", "over 1h00 of wall clock")]
 
 
 def test_a_card_without_pr_gets_the_comment_you_wrote_last_time(days, monkeypatch):

@@ -121,22 +121,30 @@ def cmd_push(a):
     print_plan(actions)
 
 
-def print_plan(actions):
-    for x in actions:
-        end = x.started + dt.timedelta(minutes=x.minutes)
-        wid = f"{x.worklog_id or '':10}"
-        print(f"{style.paint(f'{x.action:8}', *ACTION_STYLE[x.action])} {style.paint(f'{x.card:14}', 'cyan')} "
-              f"{x.started:%H:%M}-{end:%H:%M} {x.minutes:4}m  {style.paint(wid, 'dim')} {x.comment}")
+def print_plan(actions, date=None):
+    """a title with the counts and what Jira will hold, then a line per worklog in order of time"""
+    if not actions:
+        style.note("nothing to push: the day has no worklog", "bold")
+        return
     counts = defaultdict(int)
     for x in actions:
         counts[x.action] += 1
-    summary = ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
     held = sum(x.minutes for x in actions if x.action in ("add", "update", "keep"))
-    style.note(f"{summary}; timelog's worklogs once sent: {daily.fmt(dt.timedelta(minutes=held))}" if summary
-               else "nothing to push: the day has no worklog", "bold")
+    title = f"Jira, {daily.short_date(date)}" if date else "Jira"
+    summary = " · ".join(f"{k} {counts[k]}" for k in ACTIONS if counts[k])
+    print(f"{style.paint(title, 'bold')}   {summary}   {style.paint('→', 'dim')} {daily.fmt(dt.timedelta(minutes=held))}")
+    card = max(len(x.card) for x in actions)
+    room = style.columns()
+    for x in sorted(actions, key=lambda x: (x.started, x.card)):
+        end = x.started + dt.timedelta(minutes=x.minutes)
+        head = f"  {ACTIONS[x.action][0]} {x.action:<8} {x.started:%H:%M}-{end:%H:%M}  {daily.fmt(dt.timedelta(minutes=x.minutes))}  "
+        comment = style.clip(x.comment, room and room - len(head) - card - 2)
+        print(f"{style.paint(head, *ACTIONS[x.action][1:])}{style.pad(x.card, style.paint(x.card, 'cyan'), card)}  {comment}")
 
 
-ACTION_STYLE = {"add": ("green",), "update": ("yellow",), "delete": ("red",), "keep": ("dim",), "foreign": ("magenta",)}
+# each action's sign, readable without colors, and its colors
+ACTIONS = {"add": ("+", "green"), "update": ("~", "yellow"), "delete": ("−", "red"), "keep": ("=", "dim"),
+           "foreign": ("!", "magenta")}
 
 
 def push_plan(a, day, client=None):
@@ -161,14 +169,11 @@ def snapshot(lines):
 def send(date, day, client, actions):
     """sends the plan's adds, updates and deletes, and keeps what Jira holds now in the day file"""
     sent, deleted = [], set()
+    todo = [x for x in actions if x.action in ("add", "update", "delete")]
     try:
-        for x in actions:
-            if x.action not in ("add", "update", "delete"):
-                continue
-            worklog_id = jira_rest.send(client, x, jira_started(x.started))
-            end = x.started + dt.timedelta(minutes=x.minutes)
-            wid = worklog_id or x.worklog_id
-            print(f"{x.action:8} {x.card:14} {x.started:%H:%M}-{end:%H:%M} {x.minutes:4}m  {wid}")
+        for i, x in enumerate(todo, 1):
+            with style.working(f"sending {i} of {len(todo)} to Jira: {x.action} {x.card}"):
+                worklog_id = jira_rest.send(client, x, jira_started(x.started))
             if worklog_id is None:
                 deleted.add(x.worklog_id)
             else:
@@ -178,4 +183,8 @@ def send(date, day, client, actions):
         day["pushed"] = push.record([p for p in day["pushed"] if p["id"] not in deleted], sent)
         store.save_day(date, day)
         jira.record_sent(date, sent, deleted)
-        print(f"# sent: {len(sent)} added or updated, {len(deleted)} deleted")
+        done = f"sent: {len(sent)} added or updated, {len(deleted)} deleted"
+        if len(sent) + len(deleted) < len(todo):  # stopped by an error, shown after this
+            style.note(f"{done}, then stopped at {len(sent) + len(deleted) + 1} of {len(todo)}", "yellow")
+        else:
+            print(style.paint(f"✓ {done}", "green") if style.on() else f"# {done}")

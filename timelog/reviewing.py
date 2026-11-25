@@ -20,6 +20,7 @@ from . import review
 from . import rules
 from . import sources
 from . import store
+from . import strip
 from . import style
 from . import sync
 from . import timeline
@@ -128,8 +129,17 @@ def review_day(a):
         late = getattr(a, "late", None)
         asked = questions_of(a.date, day, rows, labels, events, late)
         completing_cards(a.date, day)
+        when = daily.short_date(a.date)
+
+        def day_strip(mark=None, answers=None):
+            return strip.lines(when, answered(day["entries"], asked, answers or {}), events, gaps, mark)
+        if asked:
+            print()
+            for line in day_strip():
+                print(f"  {line}")
+            print(style.paint(f"  {' ' * strip.LABEL}{strip.LEGEND}", "dim"))
         try:
-            answers, new_rules = questions.ask([q for _row, q in asked])
+            answers, new_rules = questions.ask([q for _row, q in asked], day_strip)
         except questions.Stop as s:
             answers, new_rules, stop = s.answers, s.rules, s.reason
         apply_answers(a, day, events, [(row, answers[n]) for n, (row, _q) in enumerate(asked) if n in answers])
@@ -142,8 +152,10 @@ def review_day(a):
             return True
         if stop is None:
             tasks = {e.task for e in day["entries"] if not late or overlaps(e.start, e.end, late)}
-            lines = [(t, worklog_time(day, t), daily.comment_of(day, t) or "", where_of(day, t, events))
-                     for t in sorted(tasks) if not model.is_unattributed(t)]
+            first = {t: min(e.start for e in day["entries"] if e.task == t) for t in tasks}
+            lines = [(t, f"{first[t]:%H:%M}", worklog_time(day, t), daily.comment_of(day, t) or "",
+                      where_of(day, t, events))
+                     for t in sorted(tasks, key=lambda t: (first[t], t)) if not model.is_unattributed(t)]
             if lines:
                 daily.correct(day, {}, set(), comments=questions.ask_comments(lines))
             with style.working("looking up the day's PRs on GitHub"):
@@ -161,10 +173,26 @@ def review_day(a):
         style.note(f"{len(todo)} entries still without a card: run `timelog {daily.short_date(a.date).split()[1]}` "
                    "again once you know", "yellow")
         return True
-    entries = day["entries"]
-    print(style.paint("logged ", "bold") + daily.logged_over(entries))
+    print()
+    daily.print_logged(day["entries"])
     finish_review(a, day)
     return True
+
+
+def answered(entries, asked, answers):
+    """the entries as the answers so far make them, for the strip: an entry takes its card or is
+    dropped, a stretch with nothing active given a card is one"""
+    tasks = {}
+    added = []
+    for n, task in answers.items():
+        row, q = asked[n]
+        if row.kind == "gap":
+            if task != config.DROP:
+                added.append(model.Entry(task, *q.mark, "manual", ("manual",)))
+            continue
+        tasks |= {i: task for i in row.indices or (row.index,)}
+    return [e._replace(task=tasks.get(i, e.task)) for i, e in enumerate(entries, 1)
+            if tasks.get(i) != config.DROP] + added
 
 
 def settled(a, day):
@@ -264,31 +292,33 @@ def questions_of(date, day, rows, labels, events, late=None):
         line = [entries[i - 1] for i in row.indices or (row.index,)] if row.kind != "gap" else []
         if row.kind == "gap":
             start, end = model.at(date, row.start), model.at(date, row.end)
-            title = f"{row.start}-{row.end}  {daily.fmt(end - start)}  nothing active: a break, or what you did?"
+            spent = end - start
         else:
             start, end = min(e.start for e in line), max(e.end for e in line)
-            spent = daily.fmt(sum((e.end - e.start for e in line), dt.timedelta()))
-            title = (f"agent {row.session}  {spent}  {style.task(row.task)}" if row.kind == "agent"
-                     else f"{row.start}-{row.end}  {spent}  {style.task(row.task)}")
+            spent = sum((e.end - e.start for e in line), dt.timedelta())
         if late and not overlaps(start, end, late):
             continue
         if row.kind == "gap":
-            details = what_the_gap_holds(start, end, events)
+            kind, sections = "nothing active", what_the_gap_holds(start, end, events)
         else:
-            details = what_it_holds(line, entries, events)
+            kind = (f"agent {row.session}" if row.kind == "agent"
+                    else "call" if any("call" in e.streams for e in line) else "your windows")
+            sections = what_it_holds(line, entries, events)
             if row.kind != "agent":
-                details += cards_shown([(e.start, e.end) for e in line], events)
+                sections[1:1] = [("cards shown", cards_shown([(e.start, e.end) for e in line], events)),
+                                 ("around it", around(start, end, events))]
         piece = daily.dominant(line, events) if line else None
         name = daily.full_name(piece.keys[0], names) if piece and piece.keys else ""
         scopes = rules.scopes(piece) if piece and not ONE_OFF.search(f"{piece.text} {name}") else []
-        out.append((start, row, questions.Question(title, details, likely_cards(entries, start, end, known),
-                                                   scopes, row.kind == "gap", name)))
+        out.append((start, row, questions.Question(
+            kind, f"{start:%H:%M}-{end:%H:%M} · {daily.fmt(spent)}", sections,
+            likely_cards(entries, start, end, known), scopes, row.kind == "gap", name, (start, end))))
     return [(row, q) for _start, row, q in sorted(out, key=lambda x: x[0])]
 
 
 def largest_pieces(line, entries, events):
     """(label, time) of the three largest pages, windows and sessions of a line's entries, glances
-    left out, and its prompts"""
+    left out unless that's all there is, and its prompts"""
     held, prompts = defaultdict(dt.timedelta), []
     for entry in line:
         pieces, said = daily.entry_pieces(entry, entries, events)
@@ -296,10 +326,11 @@ def largest_pieces(line, entries, events):
             held[label] += spent
         prompts += said
     ranked = sorted(((k, v) for k, v in held.items() if v >= dt.timedelta(seconds=1)), key=lambda kv: -kv[1])
-    return ([kv for kv in ranked if kv[1] >= timeline.GLANCE] or ranked)[:3], prompts  # glances when that's all
+    return ([kv for kv in ranked if kv[1] >= timeline.GLANCE] or ranked)[:3], prompts
 
 
 def spent_of(spent):
+    """4 characters: minutes, or seconds under a minute"""
     seconds = round(spent.total_seconds())
     return f"{round(seconds / 60):3}m" if seconds >= 60 else f"{seconds:3}s"
 
@@ -320,16 +351,17 @@ def gist(text):
 
 def prompt_lines(prompts):
     said = [g for g in (gist(p.text) for p in prompts) if g]
-    return [f"prompt {style.clip(repr(g), 160)}" for g in said[:2]]
+    return [style.clip(repr(g), 160) for g in said[:2]]
 
 
 def what_it_holds(line, entries, events):
-    """the largest pieces of a line's entries, and its prompts"""
+    """[(what was open, its largest pieces), (prompts, the first two)]"""
     largest, prompts = largest_pieces(line, entries, events)
-    return [f"{spent_of(spent)}  {label}" for label, spent in largest] + prompt_lines(prompts)
+    return [("what was open", [f"{spent_of(spent)}  {label}" for label, spent in largest]),
+            ("prompts", prompt_lines(prompts))]
 
 
-def cards_shown(spans, events):
+def cards_shown(spans, events, most=5):
     """the cards your windows and tabs showed within the spans, glances too, which give no time: the
     longest shown first, with the page or window that showed them"""
     shown, where = defaultdict(dt.timedelta), {}
@@ -341,35 +373,42 @@ def cards_shown(spans, events):
             if overlap > dt.timedelta(0):
                 shown[e.card] += overlap
                 where.setdefault(e.card, e.keys[0] if e.keys else "")
-    if not shown:
-        return []
     ranked = sorted(shown, key=lambda c: -shown[c])
-    text = ", ".join(f"{c} {spent_of(shown[c]).strip()}" + (f" ({where[c]})" if where[c] else "") for c in ranked[:5])
-    return [style.clip(f"cards shown: {text}" + (f" and {len(ranked) - 5} more" if len(ranked) > 5 else ""), 200)]
+    width = max((len(c) for c in ranked[:most]), default=0)
+    return [f"{c:<{width}}  {spent_of(shown[c])}  {where[c]}".rstrip() for c in ranked[:most]] + (
+        [f"and {len(ranked) - most} more"] if len(ranked) > most else [])
+
+
+def around(start, end, events):
+    """what you had open just before and just after"""
+    yours = [e for e in events if e.until and e.until > e.when and (e.stream.startswith("me ") or e.kind == "call")
+             and e.kind not in ("presence", "away")]
+    slack = dt.timedelta(seconds=30)  # the span's ends are rounded to the minute
+    before = max((e for e in yours if e.when < start and e.until <= start + slack), key=lambda e: e.until, default=None)
+    after = min((e for e in yours if e.until > end and e.when >= end - slack), key=lambda e: e.when, default=None)
+    names = daily.whole_names(events)
+    out = []
+    for e, what in ((before, "until"), (after, "from ")):
+        if e:
+            name = daily.full_name(e.keys[0], names) if e.keys else e.text.split("|")[0]
+            out.append(f"{what} {e.until if e is before else e.when:%H:%M}  {name}" + (f" ({e.card})" if e.card else ""))
+    return out
 
 
 def what_the_gap_holds(start, end, events):
-    """what's known of a stretch with nothing active: when you were away from the keyboard, the
-    prompts you wrote, and what you did just before and just after"""
+    """[(while it lasted, when you were away from the keyboard), (around it, what you had open just
+    before and after), (prompts, those you wrote then)]"""
     away = timeline.merge([(max(e.when, start), min(e.until, end), set()) for e in events
                            if e.kind == "away" and e.until and e.when < end and e.until > start])
     held = sum((b - a for a, b, _ in away), dt.timedelta())
     if held >= end - start - dt.timedelta(minutes=1):
-        out = ["away from the keyboard the whole time"]
+        lasted = ["away from the keyboard the whole time"]
     else:
-        out = [f"away from the keyboard {a:%H:%M}-{b:%H:%M}" for a, b, _ in away]
-        out.append(f"{daily.fmt(end - start - held)} with nothing recorded: the computer off, asleep or locked?"
-                   if away else "nothing recorded: the computer off, asleep or locked?")
-    yours = [e for e in events if e.until and e.until > e.when and (e.stream.startswith("me ") or e.kind == "call")
-             and e.kind not in ("presence", "away")]
-    before = max((e for e in yours if e.until <= start + dt.timedelta(minutes=1)), key=lambda e: e.until, default=None)
-    after = min((e for e in yours if e.when >= end - dt.timedelta(minutes=1)), key=lambda e: e.when, default=None)
-    names = daily.whole_names(events)
-    for e, what in ((before, "until"), (after, "from")):
-        if e:
-            name = daily.full_name(e.keys[0], names) if e.keys else e.text.split("|")[0]
-            out.append(f"{what} {e.until if e is before else e.when:%H:%M}  {name}" + (f" ({e.card})" if e.card else ""))
-    return out + prompt_lines([e for e in events if e.kind == "claude" and start <= e.when < end])
+        lasted = [f"away from the keyboard {a:%H:%M}-{b:%H:%M}" for a, b, _ in away]
+        lasted.append(f"{daily.fmt(end - start - held)} with nothing recorded: the computer off, asleep or locked?"
+                      if away else "nothing recorded: the computer off, asleep or locked?")
+    return [("while it lasted", lasted), ("around it", around(start, end, events)),
+            ("prompts", prompt_lines([e for e in events if e.kind == "claude" and start <= e.when < end]))]
 
 
 def where_of(day, task, events):
@@ -383,7 +422,7 @@ def where_of(day, task, events):
 
 
 def likely_cards(entries, start, end, known):
-    """(task, why) of the cards you were probably on: the agents working then, the cards just before
+    """(task, its Jira summary, why) of the cards you were probably on: the agents working then, the cards just before
     and after, then admin and tooling"""
     cards = model.card_regex()
     found = []
@@ -402,7 +441,7 @@ def likely_cards(entries, start, end, known):
         if task not in seen:
             seen.add(task)
             summary = known.get(jira.card_of_task(task, cards), {}).get("summary", "")
-            out.append((task, f"{style.clip(summary, config.SUMMARY_WIDTH)} · {why}" if summary else why))
+            out.append((task, style.clip(summary, config.SUMMARY_WIDTH), why))
     return out[:6]
 
 
@@ -504,6 +543,7 @@ def finish_review(a, day):
     if not any(x.action in ("add", "update", "delete") for x in actions):
         print("# Jira already has these worklogs")
         return
-    sync.print_plan(actions)
+    print()
+    sync.print_plan(actions, a.date)
     if ask("Send them to Jira? [y/N] "):
         sync.send(a.date, day, client, actions)
