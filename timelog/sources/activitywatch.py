@@ -75,8 +75,9 @@ def combine(start, end, cards, me, events=()):
                 for w in windows for a, b in (clip(w["start"], w["end"], here) if afk else [(w["start"], w["end"])])]
     if not windows:
         segments = [(a, b, "", "") for a, b in here]
-    titles = {i["title"]: s for s, i in info.items() if i["title"]}
-    return events + my_lane(segments, tabs, edits, events, cards, me, titles), info
+    working = {session_of_turn(t) for t in history if not info[session_of_turn(t)]["loop"]
+               and not config.ignored(t.get("data", {}).get("cwd"))}  # the sessions whose turns count
+    return events + my_lane(segments, tabs, edits, cards, me, info, working), info
 
 
 BROWSERS = re.compile(r"firefox|chrom|brave|edge|vivaldi|opera|safari", re.I)
@@ -118,20 +119,18 @@ def covering(items, when):
     return next((i for i in items if i["start"] <= when < i["end"]), None)
 
 
-def my_lane(segments, tabs, edits, events, cards, me, titles):
+def my_lane(segments, tabs, edits, cards, me, info, working):
     """your lane: each focused window while at the keyboard, cut by the tabs in a browser window and
     by an editor's activity elsewhere. Each piece has its match string and the card of its evidence,
     if any; the rules, the answers and the folding do the rest (DESIGN.md)"""
-    prompted = {}
-    for e in events:
-        if e.kind == "claude":
-            prompted.setdefault(e.stream.split()[1], []).append(e)
+    titles = {i["title"]: s for s, i in info.items() if i["title"]}
     out = []
     for s0, s1, app, title in segments:
         browsing = bool(BROWSERS.search(app))
         session = session_of(title, titles) if "code" in app.lower() else None
-        title = whole_title(title, titles) if session else title
-        prompt = next((p for p in reversed(prompted.get(session, [])) if p.when <= s1), None) if session else None
+        title = whole_title(title, info[session]["title"]) if session else title
+        # its session's card, even when its turns were on an earlier day
+        told = info[session]["card"] if session in working else None
         mine_tabs = [t for t in tabs if t["start"] < s1 and t["end"] > s0] if browsing else []
         # an editor's heartbeats run on a little after you leave it: not over the browser
         mine_edits = [] if browsing else [e for e in edits if e["start"] < s1 and e["end"] > s0
@@ -139,7 +138,7 @@ def my_lane(segments, tabs, edits, events, cards, me, titles):
         cuts = sorted({s0, s1} | {x for i in mine_tabs + mine_edits for x in (i["start"], i["end"]) if s0 < x < s1})
         for a, b in zip(cuts, cuts[1:]):
             kind, card, review, source, text = evidence(
-                title, prompt, covering(mine_tabs, a), covering(mine_edits, a), cards, me)
+                title, told, covering(mine_tabs, a), covering(mine_edits, a), cards, me)
             last = out[-1] if out else None
             same = last and (last.kind, last.card, last.review, last.text) == (kind, card, review, text)
             if same and last.until == a:
@@ -149,7 +148,7 @@ def my_lane(segments, tabs, edits, events, cards, me, titles):
     return out
 
 
-def evidence(title, prompt, tab, edit, cards, me):
+def evidence(title, told, tab, edit, cards, me):
     """(kind, card, review, source, match string) of a piece: its tab in a browser, else a Claude
     session's window, else an editor's activity, else the window; the card from a card key, a PR or
     the session"""
@@ -159,8 +158,8 @@ def evidence(title, prompt, tab, edit, cards, me):
         string = f"{data.get('title', '')}|{data.get('url', '')}"[:300]
         card, review = page if page else (model.card_of_text(string, cards), False)
         return ("browser", card, review, "activitywatch web", string)
-    if prompt:
-        return ("focus", prompt.card, prompt.review, "activitywatch window", title[:300])
+    if told:  # a Claude session's window: (card, review) of its session
+        return ("focus", *told, "activitywatch window", title[:300])
     if edit:
         data = edit.get("data", {})
         repository, branch = editor_place(data)
@@ -180,20 +179,19 @@ def editor_place(data):
 
 
 def session_of(window_title, titles):
-    """the session whose title VS Code shows first in its window title, maybe cut with an ellipsis"""
-    head = window_title.split(" - ")[0].rstrip("… ").strip()
-    if len(head) < 8:
-        return None
-    return next((s for t, s in titles.items() if t.startswith(head)), None)
+    """the session whose title VS Code shows first in its window title, maybe cut with an ellipsis.
+    A title not cut must be followed by " - ": a folder named like the start of one isn't its window"""
+    whole = next((s for t, s in titles.items() if len(t) >= 8 and window_title.startswith(f"{t} - ")), None)
+    head, cut, _rest = window_title.partition("…")
+    if whole or not cut or len(head.strip()) < 8:
+        return whole
+    return next((s for t, s in titles.items() if t.startswith(head.strip())), None)
 
 
-def whole_title(window_title, titles):
-    """a VS Code window title with the session title it cut with an ellipsis made whole"""
-    head, sep, rest = window_title.partition(" - ")
-    if not head.endswith("…"):
-        return window_title
-    whole = next((t for t in titles if t.startswith(head.rstrip("… ").strip())), None)
-    return f"{whole}{sep}{rest}" if whole else window_title
+def whole_title(window_title, title):
+    """a VS Code window title with its session's `title`, which it cut with an ellipsis, made whole"""
+    head, cut, rest = window_title.partition("…")
+    return f"{title}{rest}" if cut and title.startswith(head.strip()) else window_title
 
 
 SESSION_HISTORY = dt.timedelta(days=14)
