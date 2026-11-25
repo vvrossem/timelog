@@ -39,12 +39,17 @@ def overlaps(entries):
     return logged({"entries": entries}) - per_task, per_task - wall_clock(entries)
 
 
-def logged_over(entries):
-    """"8h17 over 6h09 of wall clock", with what makes the difference"""
+def logged_rows(entries):
+    """(what, time, about) for the time logged and what makes it more than the wall clock"""
     same, parallel = overlaps(entries)
-    parts = [f"{fmt(same)} same card in parallel lanes"] * bool(same) + [f"{fmt(parallel)} different cards in parallel"] * bool(parallel)
-    return f"{fmt(logged({'entries': entries}))} over {fmt(wall_clock(entries))} of wall clock" + (
-        f" ({', '.join(parts)})" if parts else "")
+    return ([("logged", fmt(logged({"entries": entries})), f"over {fmt(wall_clock(entries))} of wall clock")]
+            + [("same card", fmt(same), "in parallel lanes")] * bool(same)
+            + [("other cards", fmt(parallel), "at the same time")] * bool(parallel))
+
+
+def print_logged(entries):
+    for what, time, about in logged_rows(entries):
+        print(f"{style.paint(f'{what:<12}', 'bold')}{time:>5}  {style.paint(about, 'dim')}")
 
 
 def build_day(date, events, rebuild=False):

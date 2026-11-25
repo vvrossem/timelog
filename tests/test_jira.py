@@ -154,7 +154,7 @@ def test_push_after_send_or_record_plans_from_what_was_sent(days, tmp_path, monk
     capsys.readouterr()
     monkeypatch.setattr(jira_rest, "available", lambda: False)  # the connector's way from here
     sync.cmd_push(ns(record=None, json=False, dry_run=True))
-    assert capsys.readouterr().out.split()[0] == "keep"
+    assert capsys.readouterr().out.splitlines()[1].split()[:2] == ["=", "keep"]
     # the connector's way: the session sends, then records
     cli.cmd_set(ns(entry=["1=ABC-1"], comment=["ABC-1=export"]))
     sent = tmp_path / "sent.json"
@@ -163,7 +163,7 @@ def test_push_after_send_or_record_plans_from_what_was_sent(days, tmp_path, monk
     sync.cmd_push(ns(record=str(sent), json=False, dry_run=True))
     capsys.readouterr()
     sync.cmd_push(ns(record=None, json=False, dry_run=True))
-    assert capsys.readouterr().out.split()[0] == "keep"
+    assert capsys.readouterr().out.splitlines()[1].split()[:2] == ["=", "keep"]
 
 
 def test_the_token_command_runs_once(monkeypatch):
@@ -189,7 +189,7 @@ def test_push_sends_like_git_push_and_n_only_shows(days, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", ["timelog", *argv, DATE])
         capsys.readouterr()
         cli.main()
-        assert capsys.readouterr().out.split()[0] == "add"  # the plan, shown only
+        assert capsys.readouterr().out.splitlines()[1].split()[:2] == ["+", "add"]  # the plan, shown only
     fake = FakeJira({}, [])
     monkeypatch.setattr(jira_rest, "available", lambda: True)
     monkeypatch.setattr(jira_rest, "Client", lambda: fake)
@@ -239,5 +239,21 @@ def test_the_review_reads_jira_once_and_sends_the_plan_shown(days, monkeypatch, 
     assert len(clients) == 1
     calls = [(m, p) for m, p, _b, _q in clients[0].calls]
     assert calls.count(("GET", "/myself")) == 1 and calls[-1] == ("POST", "/issue/ABC-1/worklog")
-    assert "add      ABC-1" in capsys.readouterr().out
+    assert re.search(r"\+ add +09:00-09:30  0h30  ABC-1", capsys.readouterr().out)
 
+
+
+def test_a_send_stopped_by_an_error_says_where(days, monkeypatch, capsys):
+    sent = []
+
+    def send(client, action, started):
+        if len(sent) == 1:
+            raise SystemExit("# Jira answered 500")
+        sent.append(action.card)
+        return "1001"
+    monkeypatch.setattr(jira_rest, "send", send)
+    plan = [push.Action("add", card, at(hhmm), 30, "", None) for card, hhmm in (("ABC-1", "09:00"), ("DEF-2", "10:00"))]
+    with pytest.raises(SystemExit, match="500"):
+        sync.send(DATE, {"entries": [], "comments": {}, "pushed": []}, None, plan)
+    assert capsys.readouterr().out.splitlines()[-1] == "# sent: 1 added or updated, 0 deleted, then stopped at 2 of 2"
+    assert [p["card"] for p in store.load_day(DATE)["pushed"]] == ["ABC-1"]  # what Jira took is kept

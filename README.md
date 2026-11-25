@@ -13,44 +13,84 @@ minutes on each. [DESIGN.md](DESIGN.md) explains how the time is counted.
 $ timelog
 # Jira: 2 cards known, 2 candidates, 0 worklogs of yours that day
 
-[1/3] 08:58-09:20  0h22  ? Meet - Daily sync
+  Tue 20.10  08    09    10    11    12    13
+  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  agents     ······▒▒▒▒▒▒▒·················
+             ▓ attributed   ? to answer   ░ away   █ call   ▒ agent
+
+─── 1 of 3 ── call ── 08:58-09:20 · 0h22 ───────────────────────────────────────────────────────────
+  Tue 20.10  08    09    10    11    12    13
+  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  agents     ······▒▒▒▒▒▒▒·················
+                  ^^^
+  what was open
        22m  Meet - Daily sync
-  1) ABC-641  Discount on invoice lines · agent a1b2c3d4 working then
-  2) TOOL-69  admin
-  [Enter] later   [1-2] or [ABC-1] that card   [-] drop   [e] editor   [q] stop
+  around it
+      from  09:20  Discount on invoice lines (ABC-641)
+
+   1  ABC-641  Discount on invoice lines  agent a1b2c3d4 working then
+   2  TOOL-69                             admin
+
+  [1-2] or [ABC-1] card · [Enter] later · [-] drop · [e] editor · [q] stop
 > 2
-  From now on too, for this title: "Meet – Daily sync"?   [y] yes   [Enter] today only
+  From now on too, for this title: "Meet – Daily sync"?   [y] yes · [n] no
   > y
 
-[2/3] 10:40-11:15  0h35  nothing active: a break, or what you did?
-  1) DEF-77: PR review  Refund rounding · just before
-  2) TOOL-69  admin
-  [Enter] a break   [1-2] or [ABC-1] that card   [e] editor   [q] stop
+─── 2 of 3 ── nothing active ── 10:40-11:15 · 0h35 ─────────────────────────────────────────────────
+  Tue 20.10  08    09    10    11    12    13
+  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  agents     ······▒▒▒▒▒▒▒·················
+                             ^^^^
+  while it lasted
+      away from the keyboard the whole time
+  around it
+      until 10:40  Review PR 412 (DEF-77)
+      from  11:15  Q4 planning.ods
+
+   1  DEF-77: PR review  Refund rounding  just before
+   2  TOOL-69                             admin
+
+  [1-2] or [ABC-1] card · [Enter] a break · [e] editor · [q] stop
 > 2
 
-[3/3] 11:15-11:45  0h30  ?
+─── 3 of 3 ── your windows ── 11:15-11:45 · 0h30 ───────────────────────────────────────────────────
+  Tue 20.10  08    09    10    11    12    13
+  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  agents     ······▒▒▒▒▒▒▒·················
+                                ^^^^
+  what was open
        30m  Q4 planning.ods
-  1) TOOL-69  admin
-  [Enter] later   [1] or [ABC-1] that card   [-] drop   [e] editor   [q] stop
+  around it
+      until 11:15  Review PR 412 (DEF-77)
+      from  11:45  shop_odoo (ABC-641)
+
+   1  TOOL-69  admin
+
+  [1] or [ABC-1] card · [Enter] later · [-] drop · [e] editor · [q] stop
 > 1
-  From now on too, for this window: "Q4 planning.ods"?   [y] yes   [Enter] today only
-  >
+  From now on too, for this window: "Q4 planning.ods"?   [y] yes · [n] no
+  > n
 # rule added: ^Meet\ –\ Daily\ sync\| -> TOOL-69
 
-Comments:
-  1) ABC-641            1h15  Discount on invoice lines, rounding test
-     09:20-09:50, 11:45-12:30 · Discount on invoice lines, shop_odoo - Visual Studio Code
-  2) DEF-77: PR review  1h00  PR review of shop_odoo#412
-     09:40-10:40 · Review PR 412, Refund rounding by bob · Pull Request #412…
-  3) TOOL-69            1h27  (none)
-     08:58-09:20, 10:40-11:45 · Meet - Daily sync, Q4 planning.ods
-Enter to keep them, or a number to change one: 3
+Comments   3h42 in all
+  1  08:58  TOOL-69            1h27  (none)
+                                     08:58-09:20, 10:40-11:45 · Meet - Daily sync, Q4 planning.ods
+  2  09:20  ABC-641            1h15  Discount on invoice lines, rounding test
+                                     09:20-09:50, 11:45-12:30 · Discount on invoice lines, shop_odoo
+  3  09:40  DEF-77: PR review  1h00  PR review of shop_odoo#412
+                                     09:40-10:40 · Review PR 412, Refund rounding by bob
+Enter to keep them, or a number to change one: 1
 TOOL-69 = Daily, team meeting, Q4 planning
-...
-logged 3h42 over 3h32 of wall clock (0h10 different cards in parallel)
-add      TOOL-69        08:58-10:23   85m             Daily, team meeting, Q4 planning
-add      ABC-641        09:20-10:35   75m             Discount on invoice lines, rounding test
-...
+  1  08:58  TOOL-69            1h27  Daily, team meeting, Q4 planning  ✓ changed
+Enter to keep them, or a number to change one:
+
+logged       3h42  over 3h32 of wall clock
+other cards  0h10  at the same time
+
+Jira, Tue 20.10   add 3   → 3h40
+  + add      08:58-10:23  1h25  TOOL-69  Daily, team meeting, Q4 planning
+  + add      09:20-10:35  1h15  ABC-641  Discount on invoice lines, rounding test
+  + add      09:40-10:40  1h00  DEF-77   PR review of shop_odoo#412
 Send them to Jira? [y/N] y
 ```
 
