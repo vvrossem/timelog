@@ -184,6 +184,16 @@ def test_the_tooling_card_says_what_was_done_not_its_title(days, monkeypatch):
         "TOOL-68": "Timelog review editor loop and lpass login, Including odoo skills in c2c-ai-skills, Skills PR"}
 
 
+def test_the_admin_card_counts_a_call_s_page_once_when_it_is_a_tab_too(days, monkeypatch):
+    monkeypatch.setattr(config, "RULES", [{"name": "Meet - Daily", "comment": "daily"}, {"name": "Notes", "comment": "notes"}])
+    call = ev("10:00", "ADMIN-5", "call", kind="call")._replace(until=at("10:15"), keys=("Meet - Daily",))
+    tab = mine("10:00", "ADMIN-5", kind="browser", minutes=15)._replace(keys=("Meet - Daily",))
+    notes = mine("10:15", "ADMIN-5", minutes=25)._replace(keys=("Notes",))
+    entry = model.Entry("ADMIN-5", at("10:00"), at("10:40"), "auto", ("call", "me browser", "me focus"))
+    # the call's 15 minutes once, under the 25 of the notes
+    assert daily.what_was_done("ADMIN-5", [entry], [call, tab, notes]) == "notes, daily"
+
+
 def test_the_admin_card_says_timesheeting_for_tempo_however_short(days, monkeypatch):
     monkeypatch.setattr(config, "CACHE_DIR", str(days))
     monkeypatch.setattr(config, "TRACKER", {**config.TRACKER, "admin_card": "ADMIN-5"})

@@ -460,6 +460,13 @@ def test_around_it_and_the_cards_shown_skip_what_says_nothing(monkeypatch):
         "until 10:00 and from 10:10  Firefox  Meet - Daily (BS-1)"]
 
 
+def test_a_call_s_page_open_as_a_tab_too_counts_its_time_once():
+    call = ev("10:00", "BS-1", "call", kind="call")._replace(until=at("10:20"), keys=("Meet - Daily",))
+    tab = mine("10:05", "BS-1", kind="browser", minutes=10)._replace(keys=("Meet - Daily",), app="firefox")
+    entry = model.Entry("BS-1", at("10:00"), at("10:20"), "auto", ("call", "me browser"))
+    assert reviewing.largest_pieces([entry], [entry], [call, tab])[0] == [("Meet - Daily", dt.timedelta(minutes=20))]
+
+
 def test_a_card_is_left_out_only_when_the_name_says_it_as_a_word():
     page = mine("09:50", "ABC-1", kind="browser", minutes=10)._replace(keys=("ABC-12 follow-up",), app="firefox")
     assert reviewing.around(at("10:00"), at("10:10"), [page]) == ["until 10:00  Firefox  ABC-12 follow-up (ABC-1)"]
