@@ -114,6 +114,14 @@ log. [`gh`](https://cli.github.com), logged in, gives PRs their card.
 pipx install git+ssh://git@github.com/vvrossem/timelog.git
 ```
 
+To update it:
+
+```sh
+pipx reinstall timelog
+```
+
+`pipx upgrade` and `pipx install --force` keep the code you installed.
+
 <details>
 <summary>With <code>/timelog</code> in Claude Code</summary>
 
