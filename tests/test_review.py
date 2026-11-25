@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from timelog import cli, config, jira, jira_rest, model, push, questions, review, reviewing, sources, store, strip, sync, timeline
+from timelog import cli, config, jira, jira_rest, model, push, questions, review, reviewing, rules, sources, store, strip, sync, timeline
 from helpers import DATE, at, ev, mine, written_rules, ns, review_day, on, asked_day
 
 
@@ -101,6 +101,8 @@ def test_the_review_asks_in_the_terminal(days, monkeypatch, capsys):
     # redrawn with each answer: Q4 planning and 10:30-11:00 given cards, the break left as it was
     assert "─── 4 of 4 ── your windows ── 11:00-11:10 · 0h10 ─" in out.split("── 3 of 4")[1]
     assert "  you        ······▓▓▓▓▓▓?·····\n" in out.split("── 4 of 4")[1]
+    # once more after the last question: news dropped, so the day ends at 11:00
+    assert "  Tue 20.10  09    10    11\n  you        ······▓▓▓▓▓▓\n" in out.split("─── the day as answered ─")[1]
     assert [(e.task, f"{e.start:%H:%M}", f"{e.end:%H:%M}", e.source) for e in store.load_day(DATE)["entries"]] == [
         ("ABC-1", "09:00", "09:30", "auto"), ("TOOL-1: planning", "10:00", "10:30", "auto"),
         ("ABC-1", "10:30", "11:00", "manual")]
@@ -285,7 +287,7 @@ def test_a_day_pushed_then_worked_on_asks_only_about_the_work_after(days, monkey
     done, prompts, _seen = asked_day(days, monkeypatch, ["ABC-2", "", "y", "", ""], late=[(at("11:00"), at("11:10"))])
     out = capsys.readouterr().out
     assert "─── 1 of 1 ── your windows ── 11:00-11:10" in out and len(prompts) == 5
-    assert re.search(r"Comments   0h10 in all\n  1  11:00  ABC-2  0h10", out) and "ABC-1  " not in out.split("Comments")[1]
+    assert re.search(r"Comments   0h10 in worklogs\n  1  11:00  ABC-2  0h10", out) and "ABC-1  " not in out.split("Comments")[1]
 
 
 def test_the_comments_show_what_jira_gets(days):
@@ -344,7 +346,7 @@ def test_the_comments_tell_when_and_where_each_task_was(days, monkeypatch, capsy
     where = reviewing.where_of(day, "ABC-1", events)
     assert where == "09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev"
     monkeypatch.setattr("builtins.input", lambda prompt: "")
-    questions.ask_comments([("ABC-1", "09:00", "0h30", "invoice export", where)])
+    questions.ask_comments([("ABC-1", "09:00", "0h30", "invoice export", where)], dt.timedelta(minutes=30))
     assert ("  1  09:00  ABC-1  0h30  invoice export\n" + " " * 25 + "09:00-09:20, 11:00-11:10 · shop_odoo, Slack - dev\n"
             in capsys.readouterr().out)
 
@@ -366,7 +368,7 @@ def test_the_questions_tell_what_little_there_is(days, monkeypatch):
                                     "around it": ["until 09:20  shop_odoo (ABC-1)", "from  10:00  Gmail"]}
     # glances only: shown anyway, with the card a glance showed, which gives no time
     assert asked["10:00-10:01"] == {"what was open": [" 20s  Slack", " 15s  Gmail"],
-                                    "cards shown": ["XYZ-9   10s  Gmail"],
+                                    "cards shown": ["Gmail  XYZ-9 10s"],
                                     "around it": ["until 09:20  shop_odoo (ABC-1)", "from  10:01  stock_odoo (ABC-2)"]}
     assert reviewing.gist('"""\n<ide_selection>x</ide_selection>\ninvoice export') == "invoice export"
     assert reviewing.gist('<agent-message from="a1">report</agent-message>') == ""
@@ -391,10 +393,10 @@ def test_the_comments_show_once_then_only_the_one_changed(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt: answers.pop(0))
     monkeypatch.setattr(questions, "prefilled", lambda prompt, text: answers.pop(0))
     changed = questions.ask_comments([("ABC-1", "09:00", "0h30", "invoice export", ""),
-                                      ("DEF-2", "10:00", "1h00", "", "")])
+                                      ("DEF-2", "10:00", "1h00", "", "")], dt.timedelta(minutes=90))
     out = capsys.readouterr().out
     assert changed == {"ABC-1": "invoice export to the bank"}
-    assert out == ("\nComments   1h30 in all\n"
+    assert out == ("\nComments   1h30 in worklogs\n"
                    "  1  09:00  ABC-1  0h30  invoice export\n"
                    "  2  10:00  DEF-2  1h00  (none)\n"
                    "  1  09:00  ABC-1  0h30  invoice export to the bank  ✓ changed\n")
@@ -410,3 +412,66 @@ def test_the_day_strip_fits_the_terminal(monkeypatch):
     assert max(len(line) for line in lines) + strip.INDENT <= 80
     # 30 minutes a cell: every second hour, so that the labels don't touch
     assert strip_of(60, "02:00", "22:00")[0] == "Tue 20.10  02  04  06  08  10  12  14  16  18  20  22"
+
+
+def test_the_questions_name_each_window_s_app(days, monkeypatch):
+    def piece(hhmm, minutes, key, app, card=None):
+        return mine(hhmm, card, minutes=minutes)._replace(keys=(key,), text=key, app=app)
+    events = [piece("09:20", 30, "ABC-1 board", "firefox", "ABC-1"),
+              ev("09:50", None, "afk", kind="away")._replace(until=at("10:00")),  # no current card after it
+              piece("10:00", 6, "Slack - dev", "slack"), piece("10:06", 4, "shop_odoo", "com.microsoft.VSCode"),
+              piece("10:10", 20, "ABC-1 board", "firefox", "ABC-1")]
+    monkeypatch.setattr(sources, "day_events", lambda date, cards: events)
+    day, gaps, _notes = reviewing.daily.build_day(DATE, events)
+    rows, labels = reviewing.review_rows(day, gaps, events)
+    [(_row, q)] = reviewing.questions_of(DATE, day, rows, labels, events)
+    # Slack's name without "Slack - ", which its app says; the same page before and after, once, its
+    # card left out as its name says it
+    assert dict(q.sections) == {"what was open": ["  6m  Slack    dev", "  4m  VS Code  shop_odoo"],
+                                "cards shown": [], "around it": ["until 09:50 and from 10:10  Firefox  ABC-1 board"],
+                                "prompts": []}
+
+
+def test_a_card_typed_is_offered_with_its_summary(monkeypatch, capsys):
+    asked = [questions.Question("your windows", "09:00-09:10", [], [("ADM-1", "", "admin")], []),
+             questions.Question("your windows", "10:00-10:10", [], [("ADM-1", "", "admin")], [])]
+    answers = ["abc-7", ""]
+    monkeypatch.setattr("builtins.input", lambda prompt: answers.pop(0))
+    questions.ask(asked, summary=lambda task: {"ABC-7": "Invoice export"}.get(task, ""))
+    assert "   2  ABC-7  Invoice export  given above\n" in capsys.readouterr().out
+
+
+def test_the_tempo_lines_line_up_in_a_terminal_only(monkeypatch, capsys):
+    lines = [push.Line("OPS-79", at("14:04"), 25, "daily"), push.Line("SHOP-2168", at("15:01"), 135, "review")]
+    sync.print_worklogs(lines)
+    assert capsys.readouterr().out.splitlines()[0].split("\t")[0] == "OPS-79"  # piped: only the value
+    monkeypatch.setattr(sync.style, "on", lambda: True)
+    sync.print_worklogs(lines)
+    assert [line.split("\t")[0] for line in capsys.readouterr().out.splitlines()] == ["OPS-79   ", "SHOP-2168"]
+
+
+def test_around_it_and_the_cards_shown_skip_what_says_nothing(monkeypatch):
+    flash = mine("10:00", "XYZ-9", kind="browser")._replace(until=at("10:00") + dt.timedelta(seconds=0.5), keys=("Gmail",))
+    assert reviewing.cards_shown([(at("10:00"), at("10:01"))], [flash]) == []  # under a second
+    # a Meet tab before, its call after: the same page once
+    tab = mine("09:50", "BS-1", kind="browser", minutes=10)._replace(keys=("Meet - Daily",), app="firefox")
+    call = ev("10:10", "BS-1", "call", kind="call")._replace(until=at("10:30"), keys=("Meet - Daily",))
+    assert reviewing.around(at("10:00"), at("10:10"), [tab, call]) == [
+        "until 10:00 and from 10:10  Firefox  Meet - Daily (BS-1)"]
+
+
+def test_a_card_is_left_out_only_when_the_name_says_it_as_a_word():
+    page = mine("09:50", "ABC-1", kind="browser", minutes=10)._replace(keys=("ABC-12 follow-up",), app="firefox")
+    assert reviewing.around(at("10:00"), at("10:10"), [page]) == ["until 10:00  Firefox  ABC-12 follow-up (ABC-1)"]
+    assert reviewing.cards_shown([(at("09:50"), at("10:00"))], [page]) == ["ABC-12 follow-up  ABC-1 10m"]
+
+
+def test_a_card_in_the_page_s_name_isn_t_repeated_and_a_rule_names_the_app(monkeypatch):
+    jira_tab = mine("10:00", "SHOP-2168", kind="browser")._replace(until=at("10:00") + dt.timedelta(seconds=58),
+                                                                    keys=("SHOP-2168",))
+    assert reviewing.cards_shown([(at("10:00"), at("10:01"))], [jira_tab]) == ["SHOP-2168  58s"]
+    window = mine("10:00", None)._replace(text="Release notes draft - shop_odoo - Visual Studio Code",
+                                          keys=("Release notes draft",), app="com.microsoft.VSCode")
+    [(what, rule)] = rules.scopes(window)
+    assert what == 'the VS Code window "Release notes draft"'
+    assert rule["regex"] == r"^Release\ notes\ draft\ \-\ shop_odoo\ \-\ Visual\ Studio\ Code$"

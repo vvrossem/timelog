@@ -140,11 +140,11 @@ def my_lane(segments, tabs, edits, cards, me, info, working):
             kind, card, review, source, text = evidence(
                 title, told, covering(mine_tabs, a), covering(mine_edits, a), cards, me)
             last = out[-1] if out else None
-            same = last and (last.kind, last.card, last.review, last.text) == (kind, card, review, text)
+            same = last and (last.kind, last.card, last.review, last.text, last.app) == (kind, card, review, text, app)
             if same and last.until == a:
                 out[-1] = last._replace(until=b)
             else:
-                out.append(model.Event(a, card, review, f"me {kind}", kind, source, text, until=b))
+                out.append(model.Event(a, card, review, f"me {kind}", kind, source, text, until=b, app=app))
     return out
 
 

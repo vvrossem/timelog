@@ -39,16 +39,21 @@ def overlaps(entries):
     return logged({"entries": entries}) - per_task, per_task - wall_clock(entries)
 
 
-def logged_rows(entries):
-    """(what, time, about) for the time logged and what makes it more than the wall clock"""
+def logged_rows(entries, worklogs=None):
+    """(what, time, about) for what Jira gets, the time logged and what makes it more than the wall
+    clock; `worklogs`: the day's worklogs' time"""
     same, parallel = overlaps(entries)
-    return ([("logged", fmt(logged({"entries": entries})), f"over {fmt(wall_clock(entries))} of wall clock")]
-            + [("same card", fmt(same), "in parallel lanes")] * bool(same)
-            + [("other cards", fmt(parallel), "at the same time")] * bool(parallel))
+    rows = [("worklogs", fmt(worklogs), "what Jira gets: a card's parallel lanes count once")] if worklogs is not None else []
+    rows.append(("logged", fmt(logged({"entries": entries})), f"over {fmt(wall_clock(entries))} of wall clock"))
+    if same:
+        rows.append(("same card", fmt(same), "in parallel lanes"))
+    if parallel:
+        rows.append(("other cards", fmt(parallel), "at the same time"))
+    return rows
 
 
-def print_logged(entries):
-    for what, time, about in logged_rows(entries):
+def print_logged(entries, worklogs=None):
+    for what, time, about in logged_rows(entries, worklogs):
         print(f"{style.paint(f'{what:<12}', 'bold')}{time:>5}  {style.paint(about, 'dim')}")
 
 

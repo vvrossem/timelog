@@ -250,6 +250,8 @@ def test_logged_over_the_wall_clock_tells_what_overlaps():
                                           ("same card", "0h30", "in parallel lanes"),
                                           ("other cards", "0h10", "at the same time")]
     assert daily.logged_rows(entries[:1]) == [("logged", "1h00", "over 1h00 of wall clock")]
+    assert daily.logged_rows(entries[:1], dt.timedelta(minutes=60))[0] == (
+        "worklogs", "1h00", "what Jira gets: a card's parallel lanes count once")
 
 
 def test_a_card_without_pr_gets_the_comment_you_wrote_last_time(days, monkeypatch):

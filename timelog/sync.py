@@ -56,6 +56,12 @@ def worklog_lines(a, day):
     return day_worklogs(day, day["entries"], cards)
 
 
+def worklogs_time(day, tasks=None):
+    """the time of the day's worklogs, as Jira gets them; of those of `tasks` only, if given"""
+    entries = [e for e in day["entries"] if tasks is None or e.task in tasks]
+    return dt.timedelta(minutes=sum(w.minutes for w in day_worklogs(day, entries, model.card_regex())))
+
+
 def day_worklogs(day, entries, cards):
     """one worklog per card: from its first entry, the time anything worked on it (its parallel
     lanes count once), its tasks' comments, rounded"""
@@ -87,10 +93,13 @@ def jira_started(when):
 
 
 def print_worklogs(lines):
-    """one tab-separated line per worklog, to enter them in Tempo"""
+    """one tab-separated line per worklog, to enter them in Tempo; in a terminal the cards are padded
+    to one width, so that the columns line up whatever the card. Piped, each cell is only its value"""
+    width = max((len(line.card) for line in lines), default=0) if style.on() else 0
     for line in lines:
         end = line.started + dt.timedelta(minutes=line.minutes)
-        print(f"{line.card}\t{line.started:%H:%M}-{end:%H:%M}\t{line.minutes}m\t{jira_started(line.started)}\t{line.comment}")
+        print(f"{line.card:<{width}}\t{line.started:%H:%M}-{end:%H:%M}\t{line.minutes}m\t{jira_started(line.started)}"
+              f"\t{line.comment}")
 
 
 def cmd_push(a):

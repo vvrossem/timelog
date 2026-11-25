@@ -5,6 +5,7 @@ import re
 import urllib.parse
 
 from . import config
+from . import model
 
 DEFAULT_RULES = [
     {"regex": r"^Meet [-–] (.+?)\|https://meet\.google\.com/(?:meet/)?[a-z]{3}-[a-z]{4}-[a-z]{3}",
@@ -48,7 +49,9 @@ def scopes(piece):
         if piece.kind == "browser" and host and not kept.get("always_active"):
             out.append((f"anything on {host}", {"regex": rf"\|https?://{re.escape(host)}(?:[/?#]|$)"}))
         return out
-    return [(f'this window: "{piece.text}"', {"regex": rf"^{re.escape(piece.text)}$", **kept})]
+    app = model.app_name(piece.app)  # worded as the review shows the window; the rule takes its whole title
+    what = f'the {app} window "{model.without_app(name, app)}"' if app and name else f'this window: "{piece.text}"'
+    return [(what, {"regex": rf"^{re.escape(piece.text)}$", **kept})]
 
 
 def fill(template, m):

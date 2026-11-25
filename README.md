@@ -24,9 +24,9 @@ $ timelog
   agents     ······▒▒▒▒▒▒▒·················
                   ^^^
   what was open
-       22m  Meet - Daily sync
+       22m  call  Meet - Daily sync
   around it
-      from  09:20  Discount on invoice lines (ABC-641)
+      from  09:20  VS Code  Discount on invoice lines (ABC-641)
 
    1  ABC-641  Discount on invoice lines  agent a1b2c3d4 working then
    2  TOOL-69                             admin
@@ -38,14 +38,14 @@ $ timelog
 
 ─── 2 of 3 ── nothing active ── 10:40-11:15 · 0h35 ─────────────────────────────────────────────────
   Tue 20.10  08    09    10    11    12    13
-  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  you        ·····▓▓▓▓▓▓▓▓▓▓▓···????▓▓▓▓···
   agents     ······▒▒▒▒▒▒▒·················
                              ^^^^
   while it lasted
       away from the keyboard the whole time
   around it
-      until 10:40  Review PR 412 (DEF-77)
-      from  11:15  Q4 planning.ods
+      until 10:40  Firefox  Review PR 412 (DEF-77)
+      from  11:15           Q4 planning.ods
 
    1  DEF-77: PR review  Refund rounding  just before
    2  TOOL-69                             admin
@@ -55,14 +55,14 @@ $ timelog
 
 ─── 3 of 3 ── your windows ── 11:15-11:45 · 0h30 ───────────────────────────────────────────────────
   Tue 20.10  08    09    10    11    12    13
-  you        ·····???▓▓▓▓▓▓▓▓···????▓▓▓▓···
+  you        ·····▓▓▓▓▓▓▓▓▓▓▓▓▓▓????▓▓▓▓···
   agents     ······▒▒▒▒▒▒▒·················
                                 ^^^^
   what was open
        30m  Q4 planning.ods
   around it
-      until 11:15  Review PR 412 (DEF-77)
-      from  11:45  shop_odoo (ABC-641)
+      until 11:15  Firefox  Review PR 412 (DEF-77)
+      from  11:45  VS Code  shop_odoo (ABC-641)
 
    1  TOOL-69  admin
 
@@ -72,7 +72,7 @@ $ timelog
   > n
 # rule added: ^Meet\ –\ Daily\ sync\| -> TOOL-69
 
-Comments   3h42 in all
+Comments   3h40 in worklogs
   1  08:58  TOOL-69            1h27  (none)
                                      08:58-09:20, 10:40-11:45 · Meet - Daily sync, Q4 planning.ods
   2  09:20  ABC-641            1h15  Discount on invoice lines, rounding test
@@ -84,6 +84,7 @@ TOOL-69 = Daily, team meeting, Q4 planning
   1  08:58  TOOL-69            1h27  Daily, team meeting, Q4 planning  ✓ changed
 Enter to keep them, or a number to change one:
 
+worklogs     3h40  what Jira gets: a card's parallel lanes count once
 logged       3h42  over 3h32 of wall clock
 other cards  0h10  at the same time
 
