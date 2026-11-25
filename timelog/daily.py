@@ -116,19 +116,29 @@ def card_refs(events, task, cards):
     return prs, prompts
 
 
-def reviewed(date, entries, cards):
+def reviewed(date, entries, cards, events):
     """{card: ["repo#N"]} of the PRs you reviewed that day on GitHub: the card the PR names, else the
-    one an agent worked on when you posted the review (it posts them for you)"""
+    card of the last agent whose prompts named the PR before, else of the one working when you posted
+    the review (it posts them for you), else none: the card of your window then says where you were,
+    not what you reviewed"""
     out = defaultdict(list)
+    named = defaultdict(list)  # repo#N -> (when, agent) of the prompts naming it
+    for e in events:
+        if e.kind == "claude":
+            for repo, number in config.PR_URL.findall(e.text):
+                named[f"{repo}#{number}"].append((e.when, model.lane_of(e.stream)))
     for when, ref in sources.reviews():
         if f"{when:%Y-%m-%d}" != date:
             continue
         card = model.card_of_pr(model.pr_info(*ref.split("#")), cards)
         if not card:
-            working = [e for e in entries if e.start <= when < e.end + dt.timedelta(minutes=1)
-                       and not model.is_unattributed(e.task) and e.task != config.DROP]
-            working.sort(key=lambda e: model.lane_of(e.streams) == "you")  # an agent's first
-            card = working and jira.card_of_task(working[0].task, cards)
+            agents = [e for e in entries if not model.is_unattributed(e.task) and e.task != config.DROP
+                      and model.lane_of(e.streams) != "you"]
+            asked = {lane for at, lane in named[ref] if at <= when}
+            asked = [e for e in agents if model.lane_of(e.streams) in asked and e.start <= when]
+            working = [e for e in agents if e.start <= when < e.end + dt.timedelta(minutes=1)]
+            last = max(asked, key=lambda e: e.start, default=None) or (working or [None])[0]
+            card = last and jira.card_of_task(last.task, cards)
         short = ref.split("/", 1)[1]
         if card and short not in out[card]:
             out[card].append(short)
@@ -222,7 +232,7 @@ def fill_comments(day, events, date):
     build can update them"""
     cards = model.card_regex()
     tasks = {e.task for e in day["entries"]} - set(day["comments"])
-    reviews = reviewed(date, day["entries"], cards)
+    reviews = reviewed(date, day["entries"], cards, events)
     earlier = earlier_comments(date, cards)
     defaults = {task: default_comment(task, events, date, cards, reviews, day["entries"], earlier) for task in tasks}
     day["defaults"] = {task: comment for task, comment in defaults.items() if comment}
