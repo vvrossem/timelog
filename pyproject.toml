@@ -15,3 +15,6 @@ timelog = "timelog.cli:main"
 
 [tool.setuptools]
 packages = ["timelog", "timelog.sources"]
+
+[tool.setuptools.package-data]
+timelog = ["page/*.html"]

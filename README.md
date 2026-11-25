@@ -194,6 +194,7 @@ the lines to type into Tempo.
 | `timelog` | the questions above, then the comments, then the push |
 | `/timelog` in Claude Code | the same, as a conversation |
 | `timelog summary` | how long you've worked so far, per card, without questions |
+| `timelog serve` | the day in your browser: its lanes, entries and totals, read-only for now |
 | `timelog friday`, `timelog 14.11.26` | another day (`timelog --help` lists the date forms) |
 
 Run it as often as you like: it keeps what you've already answered. Missed days come first, the
@@ -311,6 +312,7 @@ timelog reads ActivityWatch on your machine and writes to Jira only the worklogs
 ActivityWatch keeps (window titles, URLs, prompts) stays in its local database, unencrypted:
 [aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents#privacy) can store less of the
 prompts.
+`timelog serve` answers on `127.0.0.1` only, to pages served from that address.
 
 ## Development
 

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>timelog</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='9' height='4' rx='1' fill='%232a9d8f'/%3E%3Crect x='6' y='9' width='9' height='4' rx='1' fill='%234361ee'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e2e1dc;
+  --work: #2a9d8f; --call: #b5179e; --agent: #4361ee; --todo: #e9a10a; --away: #c9c8c2;
+  --select: #1d1d1b; --hover: #f0efea;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --surface: #1f1f1d; --text: #ecebe6; --muted: #9b9a94; --border: #34332f;
+    --work: #3fbfae; --call: #e05cc8; --agent: #7b93ff; --todo: #f2b632; --away: #4a4944;
+    --select: #ecebe6; --hover: #2a2a27;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+h1 .app { color: var(--muted); font-weight: 500; margin-right: 8px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.nav { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+button, input[type=date] {
+  font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible, input:focus-visible, tr:focus-visible, rect:focus-visible { outline: 2px solid var(--agent); outline-offset: 1px; }
+.status { color: var(--muted); min-height: 20px; margin-bottom: 8px; }
+.status.error { color: #d1495b; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.chart { overflow-x: auto; }
+.chart svg { display: block; }
+.chart text { fill: var(--muted); font-size: 12px; }
+.chart .lane-label { fill: var(--text); }
+.chart .grid { stroke: var(--border); }
+.chart rect.bar { cursor: pointer; }
+.chart rect.selected { stroke: var(--select); stroke-width: 2; }
+.chart svg { user-select: none; -webkit-user-select: none; }
+.chart .plot { cursor: crosshair; }
+.chart .brush { fill: var(--agent); fill-opacity: .15; stroke: var(--agent); stroke-opacity: .6; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter { font-size: 12px; padding: 2px 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 6px; }
+.filter::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
+.filter.gap::before { background: none; border: 1.5px dashed var(--todo); width: 8px; height: 8px; }
+.filter[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+.filter[aria-pressed="false"]::before { opacity: .35; }
+.zoom { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+h2 .count { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+details.glances { margin-top: 8px; color: var(--muted); }
+details.glances summary { cursor: pointer; }
+details.glances .pieces { margin-top: 4px; color: var(--text); }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+#entries tr { cursor: pointer; }
+#entries tr:hover { background: var(--hover); }
+tbody tr.selected { background: var(--hover); box-shadow: inset 3px 0 0 var(--select); }
+td.num, td.time, td.min { white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.num, td.min { color: var(--muted); text-align: right; }
+.task { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.task::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.dim { color: var(--muted); }
+.default { color: var(--muted); font-style: italic; }
+aside.card { position: sticky; top: 16px; }
+.detail-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pieces { list-style: none; margin: 0; padding: 0; }
+.pieces li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 2px 8px; padding: 4px 0; }
+.pieces .m { text-align: right; font-variant-numeric: tabular-nums; }
+.pieces .what { overflow-wrap: anywhere; }
+.pieces .stream { grid-column: 2; font-size: 12px; color: var(--muted); }
+.prompt { padding: 6px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.prompt time { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.totals { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 14px; margin-top: 12px; }
+.totals .t { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.notes { margin: 0; padding-left: 18px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.badge { font-size: 12px; border: 1px solid var(--border); border-radius: 99px; padding: 1px 8px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="app">timelog</span><span id="day-label"></span></h1>
+    <span id="pushed" class="badge" hidden>handed over</span>
+    <div class="nav">
+      <button id="prev" title="The day before" aria-label="The day before">‹</button>
+      <input id="date" type="date" aria-label="Day">
+      <button id="next" title="The day after" aria-label="The day after">›</button>
+      <button id="today">Today</button>
+      <button id="reload" title="Read ActivityWatch again">Refresh</button>
+    </div>
+  </header>
+  <div id="status" class="status" role="status"></div>
+
+  <section class="card">
+    <div class="toolbar">
+      <div class="filters" role="group" aria-label="Show on the chart and in the entries">
+        <button class="filter" data-kind="work" aria-pressed="true" style="--c: var(--work)">attributed</button>
+        <button class="filter" data-kind="call" aria-pressed="true" style="--c: var(--call)">call</button>
+        <button class="filter" data-kind="agent" aria-pressed="true" style="--c: var(--agent)">agent</button>
+        <button class="filter" data-kind="todo" aria-pressed="true" style="--c: var(--todo)">to answer</button>
+        <button class="filter gap" data-kind="gap" aria-pressed="true">nothing active</button>
+        <button class="filter" data-kind="away" aria-pressed="true" style="--c: var(--away)">away</button>
+      </div>
+      <div class="zoom"><span id="range"></span><button id="zoom-out" disabled>Whole day</button></div>
+    </div>
+    <div class="chart" id="chart"></div>
+    <p class="hint">Drag across the chart to zoom in, double-click it for the whole day. Click a category to hide it.</p>
+  </section>
+
+  <div class="cols">
+    <div>
+      <section class="card">
+        <h2>Entries<span class="count" id="entries-count"></span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Time</th><th>Min</th><th>Task</th><th>From</th><th>Comment</th></tr></thead>
+            <tbody id="entries"></tbody>
+          </table>
+        </div>
+        <div id="no-entries" class="empty" hidden></div>
+      </section>
+      <section class="card" id="notes-card" hidden>
+        <h2>To look at</h2>
+        <ul class="notes" id="notes"></ul>
+      </section>
+      <section class="card">
+        <h2>What Jira gets</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Card</th><th>From</th><th>Time</th><th>Comment</th></tr></thead>
+            <tbody id="worklogs"></tbody>
+          </table>
+        </div>
+        <div class="totals" id="totals"></div>
+      </section>
+    </div>
+    <aside class="card" id="detail">
+      <h2>Entry</h2>
+      <div id="detail-body" class="dim">Click an entry or a bar to see what it's made of.</div>
+    </aside>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVG = "http://www.w3.org/2000/svg";
+const COLORS = { work: "--work", call: "--call", agent: "--agent", todo: "--todo" };
+let view = null;
+let selected = null;
+let zoom = null;  // {start, end} in ms, or the whole day
+const hidden = new Set();
+const MIN_ZOOM = 10 * 60000;
+
+function el(tag, attrs = {}, text) {
+  const node = tag.startsWith("svg:") ? document.createElementNS(SVG, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.setAttribute("class", v);
+    else if (k === "style") node.setAttribute("style", v);
+    else node.setAttribute(k, v);
+  }
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function hhmm(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function fmt(minutes) {
+  return Math.floor(minutes / 60) + "h" + String(minutes % 60).padStart(2, "0");
+}
+
+function localToday() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function shiftDate(date, days) {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function status(text, error = false) {
+  $("status").textContent = text;
+  $("status").className = "status" + (error ? " error" : "");
+}
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+
+async function load(date) {
+  status("Reading ActivityWatch…");
+  $("date").value = date;
+  history.replaceState(null, "", "?date=" + date);
+  try {
+    view = await getJSON("/api/day?date=" + encodeURIComponent(date));
+  } catch (e) {
+    view = null;
+    status(e.message, true);
+    return;
+  }
+  status("");
+  selected = null;
+  zoom = null;
+  render();
+}
+
+function render() {
+  $("day-label").textContent = view.label;
+  document.title = "timelog · " + view.label;
+  $("pushed").hidden = !view.pushed;
+  $("next").disabled = view.date >= view.today;
+  $("date").max = view.today;
+  drawChart();
+  drawEntries();
+  drawNotes();
+  drawWorklogs();
+  $("detail-body").className = "dim";
+  $("detail-body").textContent = "Click an entry or a bar to see what it's made of.";
+}
+
+function range() {
+  if (zoom) return zoom;
+  return { start: Date.parse(view.bounds.start), end: Date.parse(view.bounds.end) };
+}
+
+function inRange(item) {
+  if (!zoom) return true;
+  return Date.parse(item.start) < zoom.end && Date.parse(item.end) > zoom.start;
+}
+
+function shown(e) {
+  return !hidden.has(e.kind) && inRange(e);
+}
+
+function hm(ms) {
+  return hhmm(new Date(ms).toISOString());
+}
+
+function ticks(start, end, inner) {
+  const steps = [5, 10, 15, 30, 60, 120];
+  const step = steps.find((m) => (inner * m * 60000) / (end - start) >= 48) || 120;
+  const first = new Date(start);
+  first.setMinutes(0, 0, 0);
+  const out = [];
+  for (let t = first.getTime(); t <= end; t += step * 60000) if (t >= start) out.push(t);
+  return { out, label: (t) => (step < 60 ? hm(t) : String(new Date(t).getHours()).padStart(2, "0")) };
+}
+
+function setZoom(next) {
+  zoom = next;
+  drawChart();
+  drawEntries();
+}
+
+function drawChart() {
+  const box = $("chart");
+  box.replaceChildren();
+  if (!view.bounds) {
+    box.append(el("div", { class: "empty" }, "Nothing recorded that day."));
+    return;
+  }
+  const { start, end } = range();
+  $("range").textContent = zoom ? `${hm(start)}-${hm(end)}` : "whole day";
+  $("zoom-out").disabled = !zoom;
+  const labelW = 120, rowH = 26, rowGap = 8, top = 22;
+  const width = Math.max(box.clientWidth, 640);
+  const inner = width - labelW - 8;
+  const x = (iso) => labelW + Math.min(Math.max((Date.parse(iso) - start) / (end - start), 0), 1) * inner;
+  const timeAt = (px) => start + (Math.min(Math.max(px - labelW, 0), inner) / inner) * (end - start);
+  const rows = view.lanes.filter((lane) => lane === "you" || view.entries.some((e) => e.lane === lane && shown(e)));
+  const height = top + rows.length * (rowH + rowGap);
+  const svg = el("svg:svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img",
+                              "aria-label": "The day's lanes" });
+  svg.append(el("svg:rect", { x: labelW, y: 0, width: inner, height, class: "plot", style: "fill: transparent" }));
+  const { out, label } = ticks(start, end, inner);
+  for (const t of out) {
+    const px = labelW + ((t - start) / (end - start)) * inner;
+    svg.append(el("svg:line", { x1: px, x2: px, y1: top - 4, y2: height, class: "grid", "pointer-events": "none" }));
+    svg.append(el("svg:text", { x: px, y: 12, "text-anchor": "middle" }, label(t)));
+  }
+  rows.forEach((lane, i) => {
+    const y = top + i * (rowH + rowGap);
+    svg.append(el("svg:text", { x: 0, y: y + rowH / 2 + 4, class: "lane-label" }, lane));
+    if (lane === "you") {
+      for (const a of hidden.has("away") ? [] : view.away.filter(inRange)) {
+        const r = el("svg:rect", { x: x(a.start), y: y + rowH / 2 - 3, width: Math.max(x(a.end) - x(a.start), 1),
+                                   height: 6, rx: 2, style: "fill: var(--away)" });
+        r.append(el("svg:title", {}, `away ${hhmm(a.start)}-${hhmm(a.end)}`));
+        svg.append(r);
+      }
+      for (const g of hidden.has("gap") ? [] : view.gaps.filter(inRange)) {
+        const r = el("svg:rect", { x: x(g.start) + 0.75, y: y + 0.75, width: Math.max(x(g.end) - x(g.start) - 1.5, 1),
+                                   height: rowH - 1.5, rx: 3,
+                                   style: "fill: none; stroke: var(--todo); stroke-width: 1.5; stroke-dasharray: 4 3" });
+        r.append(el("svg:title", {}, `nothing active ${hhmm(g.start)}-${hhmm(g.end)}`));
+        svg.append(r);
+      }
+    }
+    for (const e of view.entries.filter((e) => e.lane === lane && shown(e))) {
+      const r = el("svg:rect", { x: x(e.start), y: y + 2, width: Math.max(x(e.end) - x(e.start), 2), height: rowH - 4,
+                                 rx: 3, class: "bar" + (e.n === selected ? " selected" : ""), tabindex: 0,
+                                 style: `fill: var(${COLORS[e.kind]})`, "data-n": e.n });
+      r.append(el("svg:title", {}, `${e.task}  ${hhmm(e.start)}-${hhmm(e.end)} · ${e.minutes} min`));
+      r.addEventListener("click", () => { if (!dragged) select(e.n); });
+      r.addEventListener("keydown", (ev) => { if (ev.key === "Enter") select(e.n); });
+      svg.append(r);
+    }
+  });
+  let from = null, brush = null, dragged = false;
+  const pointX = (ev) => ev.clientX - svg.getBoundingClientRect().left;
+  svg.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0 || pointX(ev) < labelW) return;
+    from = pointX(ev);
+    dragged = false;
+  });
+  svg.addEventListener("pointermove", (ev) => {
+    if (from === null) return;
+    const px = Math.min(Math.max(pointX(ev), labelW), labelW + inner);
+    if (!dragged && Math.abs(px - from) < 6) return;
+    if (!dragged) {
+      dragged = true;
+      svg.setPointerCapture(ev.pointerId);
+      brush = el("svg:rect", { y: 0, height, class: "brush", "pointer-events": "none" });
+      svg.append(brush);
+    }
+    brush.setAttribute("x", Math.min(from, px));
+    brush.setAttribute("width", Math.abs(px - from));
+  });
+  svg.addEventListener("pointerup", (ev) => {
+    if (from === null) return;
+    const a = timeAt(Math.min(from, pointX(ev))), b = timeAt(Math.max(from, pointX(ev)));
+    from = null;
+    if (!dragged) return;
+    const mid = (a + b) / 2;
+    setZoom(b - a >= MIN_ZOOM ? { start: a, end: b } : { start: mid - MIN_ZOOM / 2, end: mid + MIN_ZOOM / 2 });
+  });
+  svg.addEventListener("dblclick", () => setZoom(null));
+  box.append(svg);
+}
+
+function taskChip(task, kind) {
+  return el("span", { class: "task", style: `--c: var(${COLORS[kind]})` }, task);
+}
+
+function drawEntries() {
+  const body = $("entries");
+  body.replaceChildren();
+  const rows = view.entries.filter(shown);
+  $("entries-count").textContent = rows.length === view.entries.length ? `${rows.length}`
+    : `${rows.length} of ${view.entries.length}${zoom ? `, ${hm(zoom.start)}-${hm(zoom.end)}` : ""}`;
+  $("no-entries").hidden = rows.length > 0;
+  $("no-entries").textContent = view.entries.length ? "No entry in this stretch or these categories." : "Nothing recorded that day.";
+  for (const e of rows.sort((a, b) => a.start.localeCompare(b.start) || a.n - b.n)) {
+    const tr = el("tr", { tabindex: 0, "data-n": e.n, class: e.n === selected ? "selected" : "" });
+    const task = el("td");
+    task.append(taskChip(e.task, e.kind));
+    tr.append(el("td", { class: "num" }, e.n), el("td", { class: "time" }, `${hhmm(e.start)}-${hhmm(e.end)}`),
+              el("td", { class: "min" }, e.minutes), task, el("td", { class: "dim" }, e.sources),
+              el("td", { class: e.default ? "default" : "" }, e.comment));
+    tr.addEventListener("click", () => select(e.n));
+    tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter") select(e.n); });
+    body.append(tr);
+  }
+}
+
+function drawNotes() {
+  const list = $("notes");
+  list.replaceChildren();
+  for (const g of view.gaps) list.append(el("li", {}, `Nothing active ${hhmm(g.start)}-${hhmm(g.end)}: a break, or a meeting to add?`));
+  for (const note of view.notes) list.append(el("li", {}, note));
+  const todo = view.entries.filter((e) => e.kind === "todo");
+  if (todo.length) list.append(el("li", {}, `${todo.length} ${todo.length === 1 ? "entry" : "entries"} without a card yet`));
+  $("notes-card").hidden = list.children.length === 0;
+}
+
+function drawWorklogs() {
+  const body = $("worklogs");
+  body.replaceChildren();
+  for (const w of view.worklogs) {
+    const card = el("td");
+    card.append(el("span", { class: "task", style: "--c: var(--work)" }, w.card));
+    const tr = el("tr");
+    tr.append(card, el("td", { class: "time" }, hhmm(w.start)), el("td", { class: "time" }, fmt(w.minutes)),
+              el("td", {}, w.comment));
+    body.append(tr);
+  }
+  const totals = $("totals");
+  totals.replaceChildren();
+  for (const t of view.totals) {
+    totals.append(el("span", {}, t.what), el("span", { class: "t" }, t.time), el("span", { class: "dim" }, t.about));
+  }
+}
+
+async function select(n) {
+  selected = n;
+  for (const node of document.querySelectorAll("[data-n]")) {
+    node.classList.toggle("selected", Number(node.dataset.n) === n);
+  }
+  const target = $("detail-body");
+  target.className = "dim";
+  target.textContent = "Loading…";
+  let entry;
+  try {
+    entry = await getJSON(`/api/entry?date=${encodeURIComponent(view.date)}&n=${n}`);
+  } catch (e) {
+    target.textContent = e.message;
+    return;
+  }
+  if (selected !== n) return;
+  const kind = view.entries.find((e) => e.n === n)?.kind || "work";
+  target.className = "";
+  target.replaceChildren();
+  const head = el("div", { class: "detail-head" });
+  head.append(taskChip(entry.task, kind), el("span", { class: "dim" },
+              `#${entry.n} · ${hhmm(entry.start)}-${hhmm(entry.end)} · ${entry.minutes} min`));
+  target.append(head);
+  const list = el("ul", { class: "pieces" });
+  for (const p of entry.pieces) {
+    const li = el("li");
+    li.append(el("span", { class: "m" }, Math.round(p.seconds / 60) + "m"), el("span", { class: "what" }, p.label),
+              el("span", { class: "stream" }, p.stream));
+    list.append(li);
+  }
+  target.append(list);
+  if (!entry.pieces.length && !entry.glances.length) {
+    target.append(el("p", { class: "dim" }, "Nothing recorded in it: an entry you added."));
+  }
+  if (entry.glances.length) {
+    const seconds = entry.glances.reduce((sum, g) => sum + g.seconds, 0);
+    const details = el("details", { class: "glances" });
+    details.open = !entry.pieces.length;
+    details.append(el("summary", {}, `${entry.pieces.length ? "and " : ""}${entry.glances.length} glances of under 30 s, ${seconds} s in all`));
+    const glances = el("ul", { class: "pieces" });
+    for (const g of entry.glances) {
+      const li = el("li");
+      li.append(el("span", { class: "m" }, g.seconds + "s"), el("span", { class: "what" }, g.label || "(no title)"),
+                el("span", { class: "stream" }, g.stream));
+      glances.append(li);
+    }
+    details.append(glances);
+    target.append(details);
+  }
+  if (entry.prompts.length) {
+    target.append(el("h2", { style: "margin-top: 14px" }, "Prompts"));
+    for (const p of entry.prompts) {
+      const div = el("div", { class: "prompt" });
+      div.append(el("time", {}, hhmm(p.when)), document.createTextNode(p.text.slice(0, 300)));
+      target.append(div);
+    }
+  }
+}
+
+$("prev").addEventListener("click", () => view && load(shiftDate(view.date, -1)));
+$("next").addEventListener("click", () => view && load(shiftDate(view.date, 1)));
+$("today").addEventListener("click", () => load(localToday()));
+$("reload").addEventListener("click", () => load($("date").value));
+$("date").addEventListener("change", () => $("date").value && load($("date").value));
+for (const button of document.querySelectorAll(".filter")) {
+  button.addEventListener("click", () => {
+    const kind = button.dataset.kind;
+    if (hidden.has(kind)) hidden.delete(kind);
+    else hidden.add(kind);
+    button.setAttribute("aria-pressed", String(!hidden.has(kind)));
+    if (view && view.bounds) { drawChart(); drawEntries(); }
+  });
+}
+$("zoom-out").addEventListener("click", () => setZoom(null));
+let resizing;
+window.addEventListener("resize", () => { clearTimeout(resizing); resizing = setTimeout(() => view && drawChart(), 100); });
+
+load(new URLSearchParams(location.search).get("date") || localToday());
+</script>
+</body>
+</html>
