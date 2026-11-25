@@ -125,10 +125,11 @@ def read(prompt, answers, rules):
     return answer
 
 
-def ask(questions, strip=None):
+def ask(questions, strip=None, summary=lambda task: ""):
     """({question number: task}, [rules with their card]) from your answers. A card given to a page,
     window or session is given to its later namesakes too, and offered to the questions after it.
-    `strip(mark, answers)` gives the day strip with the answers so far and the question's time marked"""
+    `strip(mark, answers)` gives the day strip with the answers so far and the question's time marked,
+    `summary(task)` the Jira summary of a card you typed"""
     answers, rules, typed, carried = {}, [], [], {}
     for n, q in enumerate(questions):
         print("\n" + header(n + 1, len(questions), q))
@@ -140,7 +141,7 @@ def ask(questions, strip=None):
         for line in (strip(q.mark, dict(answers)) if strip and q.mark else []):
             print(f"  {line}")
         show_sections(q.sections)
-        options = q.options + [(t, "", "given above") for t in typed if t not in {o for o, _s, _w in q.options}]
+        options = q.options + [(t, summary(t), "given above") for t in typed if t not in {o for o, _s, _w in q.options}]
         print()
         show_options(options)
         numbers = (f"1-{len(options)}",) if len(options) > 1 else ("1",) if options else ()
@@ -191,9 +192,10 @@ def ask_scope(scopes, answers, rules):
         print(style.paint("  y or n" if len(scopes) == 1 else f"  a number from 1 to {len(scopes)}, or n", "yellow"))
 
 
-def ask_comments(lines):
+def ask_comments(lines, worklogs):
     """{task: comment} you changed; lines: (task, start, time, comment, where: when and what its time
-    was), in order of time. The list shows once, then each comment you change"""
+    was), in order of time; `worklogs`: the time of the day's worklogs. The list shows once, then each
+    comment you change"""
     changed = {}
     card = max((len(task) for task, *_rest in lines), default=0)
     number = len(str(len(lines)))
@@ -205,8 +207,8 @@ def ask_comments(lines):
         text = changed.get(task, comment) or style.paint("(none)", "yellow")
         return f"  {i:{number}}  {style.paint(start, 'dim')}  {style.pad(task, style.task(task), card)}  {time}  {text}{mark}"
 
-    total = sum(int(time.split("h")[0]) * 60 + int(time.split("h")[1]) for _t, _s, time, _c, _w in lines)
-    print("\n" + style.paint("Comments", "bold") + style.paint(f"   {total // 60}h{total % 60:02d} in all", "dim"))
+    total = int(worklogs.total_seconds()) // 60
+    print("\n" + style.paint("Comments", "bold") + style.paint(f"   {total // 60}h{total % 60:02d} in worklogs", "dim"))
     for i, (_task, _start, _time, _comment, where) in enumerate(lines, 1):
         print(line(i))
         if where:

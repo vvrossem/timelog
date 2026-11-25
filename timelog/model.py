@@ -25,6 +25,7 @@ class Event(NamedTuple):
     side: bool = False  # a side activity: doesn't change your current card
     guessed: bool = False  # its card came from a rule or an answer, not from what it shows
     tokens: tuple = ()  # an agent turn's (input, output, cache write, cache read), on its first stretch
+    app: str = ""  # the application of a piece of your lane, as ActivityWatch names it
 
 
 class Entry(NamedTuple):
@@ -154,3 +155,20 @@ def at(date, hhmm):
 
 def round_minute(when):
     return (when + dt.timedelta(seconds=30)).replace(second=0, microsecond=0)
+
+
+# the apps' short names, as ActivityWatch's window watcher gives them (lower case); others as they come
+APPS = {"firefox": "Firefox", "firefox-default": "Firefox", "firefox-esr": "Firefox", "google-chrome": "Chrome",
+        "chromium": "Chromium", "brave-browser": "Brave", "com.microsoft.vscode": "VS Code", "code": "VS Code",
+        "code-oss": "VS Code", "slack": "Slack", "org.gnome.nautilus": "Files", "gnome-terminal-server": "Terminal",
+        "org.gnome.terminal": "Terminal"}
+
+
+def app_name(app):
+    """an app's short name; none for one ActivityWatch couldn't tell"""
+    return "" if app.lower() in ("", "unknown") else APPS.get(app.lower(), app)
+
+
+def without_app(name, app):
+    """a name without the app it starts with: a rule names Slack's windows "Slack - <channel>" """
+    return name[len(app) + 3:] if app and name.lower().startswith(f"{app.lower()} - ") else name

@@ -46,7 +46,7 @@ def print_day(day, breaks=(), notes=(), date=None):
         style.note(f"nothing active {g0:%H:%M}-{g1:%H:%M}: {hint}", "yellow")
     if date:
         print_jira(day, date)
-    daily.print_logged(entries)
+    daily.print_logged(entries, sync.worklogs_time(day))
 
 
 def sources_of(entry):
