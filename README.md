@@ -106,7 +106,8 @@ spent on its Jira page while the agent worked isn't added on top. The day is mad
 
 You need ActivityWatch with its AFK and window watchers, plus
 [aw-watcher-web](https://github.com/ActivityWatch/aw-watcher-web) for browser tabs and calls, and
-[aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents) if you use Claude Code.
+[aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents) for Claude Code or GitHub Copilot
+(with its Copilot poller).
 ActivityWatch records from the day you install it, so set it up before the first day you want to
 log. [`gh`](https://cli.github.com), logged in, gives PRs their card.
 

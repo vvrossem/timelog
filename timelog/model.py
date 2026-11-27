@@ -14,7 +14,7 @@ class Event(NamedTuple):
     when: dt.datetime
     card: Optional[str]
     review: bool
-    stream: str  # a Claude session or subagent, a call, your lane ("me <kind>")
+    stream: str  # an agent session or subagent, a call, your lane ("me <kind>")
     kind: str  # claude (a prompt), aw-agent (a turn), call, focus (a window),
     #            browser (a PR or card tab), meet (a Meet tab), presence (dropped by a rule), away
     source: str
@@ -41,9 +41,24 @@ def lane_of(streams):
     """the lane of a stream, or of an entry's streams: `agent <session>` (its subagents in it), else
     `you` (your windows and calls, manual entries)"""
     names = [streams] if isinstance(streams, str) else list(streams)
-    if names and all(s.startswith("claude ") for s in names):
-        return f"agent {min(s.removeprefix('claude ').split('/')[0] for s in names)}"
+    sessions = [agent_session(s) for s in names]
+    if sessions and all(session is not None for session in sessions):
+        return f"agent {min(session for session in sessions if session is not None)}"
     return "you"
+
+
+def is_agent_stream(stream):
+    return stream.startswith(("claude ", "copilot ", "agent "))
+
+
+def agent_session(stream):
+    """the base session id of an agent stream, or None for a non-agent stream"""
+    return stream.split(" ", 1)[1].split("/")[0] if is_agent_stream(stream) else None
+
+
+def agent_label(stream):
+    """the user-facing `agent <session>` label for any provider's stream"""
+    return f"agent {stream.split(' ', 1)[1]}" if is_agent_stream(stream) else stream
 
 
 def is_unattributed(task):

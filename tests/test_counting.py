@@ -175,6 +175,7 @@ def test_a_cards_lanes_count_once_in_its_worklog(days, monkeypatch, capsys):
 
 def test_lane_of():
     assert model.lane_of("claude 8b36b346/a2378f66") == "agent 8b36b346"
+    assert model.lane_of("copilot 8b36b346") == "agent 8b36b346"
     assert model.lane_of(("claude s1", "claude s1/sub")) == "agent s1"
     assert model.lane_of(("me focus", "me browser (folded)")) == "you"
     assert model.lane_of(("call",)) == model.lane_of(("manual",)) == "you"

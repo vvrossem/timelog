@@ -17,8 +17,8 @@ NO_CARD_KINDS = ("presence", "away")
 
 
 def string_of(e, sessions):
-    if e.stream.startswith("claude "):
-        info = sessions.get(e.stream.split()[1].split("/")[0], {})
+    if model.is_agent_stream(e.stream):
+        info = sessions.get(model.agent_session(e.stream), {})
         return f"{info.get('title', '')}|{info.get('command', '')}"
     return e.text
 
@@ -28,7 +28,8 @@ def apply(events, sessions, rules=None):
     when a rule gives it"""
     out = []
     for e in events:
-        if e.kind in NO_CARD_KINDS or not (e.stream.startswith(("claude ", "me ")) or e.kind == "call"):
+        if e.kind in NO_CARD_KINDS or not (model.is_agent_stream(e.stream) or e.stream.startswith("me ")
+                                            or e.kind == "call"):
             out.append(e)
             continue
         rule, name, card = match_rules.match(string_of(e, sessions), rules, e.kind)

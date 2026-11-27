@@ -54,8 +54,8 @@ def sources_of(entry):
     (subagents in their session). What was folded in from your lane shows in `show N`"""
     streams = [s for s in entry.streams if not s.endswith(" (folded)")] or [
         s.removesuffix(" (folded)") for s in entry.streams]
-    mine = dict.fromkeys(s.removeprefix("me ") for s in streams if not s.startswith("claude "))
-    agents = dict.fromkeys(s.removeprefix("claude ").split("/")[0] for s in streams if s.startswith("claude "))
+    mine = dict.fromkeys(s.removeprefix("me ") for s in streams if not model.is_agent_stream(s))
+    agents = dict.fromkeys(model.agent_session(s) for s in streams if model.is_agent_stream(s))
     return ", ".join([*mine, *([f"agent {' '.join(agents)}"] if agents else [])])
 
 

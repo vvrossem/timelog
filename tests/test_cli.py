@@ -201,9 +201,9 @@ def test_sources_of_an_entry_are_short():
     from timelog import model
     at = MONDAY.isoformat()
     entry = model.Entry("ABC-1", model.at(at, "09:00"), model.at(at, "10:00"), "auto",
-                        ("claude 8b36b346", "claude 8b36b346/a2378f66", "claude 66692592", "me browser (folded)",
-                         "me focus", "call"))
-    assert cli.sources_of(entry) == "focus, call, agent 8b36b346 66692592"
+                        ("claude 8b36b346", "claude 8b36b346/a2378f66", "claude 66692592",
+                         "copilot 9a4f6c2d", "me browser (folded)", "me focus", "call"))
+    assert cli.sources_of(entry) == "focus, call, agent 8b36b346 66692592 9a4f6c2d"
     folded_only = entry._replace(streams=("me browser (folded)",))
     assert cli.sources_of(folded_only) == "browser"
 
