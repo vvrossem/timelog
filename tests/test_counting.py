@@ -132,6 +132,18 @@ def test_an_unattributed_call_stays_apart_with_what_folds_into_it():
     assert entries == [("?", "09:00", "09:05"), ("? Meet - Sync", "09:10", "09:40")]
 
 
+def test_a_call_holds_your_lane_while_it_runs():
+    # a meeting 09:00-09:30 on ADMIN-5: a page of B, then the window of an agent working on A between
+    # its turns, count for the meeting while it runs, and for their own cards after
+    call = model.Event(at("09:00"), "ADMIN-5", False, "call", "call", "activitywatch web", "Meet - All hands",
+                       until=at("09:30"))
+    events = [call, mine("09:05", "B", "browser", text="B page", minutes=10),
+              ev("09:15", "A", "claude s1", minutes=2), mine("09:20", None, text="A session", minutes=15)._replace(keys=("A session",)),
+              prompt("09:21", "A", "claude s1")]
+    entries, _breaks, _notes = entries_of(events)
+    assert sorted(entries) == [("A", "09:15", "09:17"), ("A", "09:30", "09:35"), ("ADMIN-5", "09:00", "09:30")]
+
+
 def test_a_prompt_makes_its_card_your_current_one():
     # a page of A for 5 minutes, then a prompt about B: the Slack minutes go with B while it works,
     # and after, while you wait to give it the next prompt; a page of A for a minute brings A back
@@ -191,7 +203,7 @@ def test_chat_goes_with_the_agent_you_steer():
 
 
 @pytest.mark.parametrize("setting, yours", [
-    ("other_cards", [("B", "09:15", "09:40")]),
+    ("other_cards", [("B", "09:15", "09:20"), ("B", "09:25", "09:40")]),  # the call holds you 09:20-09:25
     ("calls", [("B", "09:30", "09:40")]),
 ])
 def test_your_time_during_an_agent_turn(monkeypatch, setting, yours):

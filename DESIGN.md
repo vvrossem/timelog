@@ -70,6 +70,9 @@ card from the first of:
 5. your current card;
 6. otherwise `?`, asked in the review.
 
+While a call runs, every piece counts for the call, whatever card it shows: you're in the meeting,
+and your lane has one card at a time.
+
 A piece shows a card when it's a PR (someone else's is a review), a Jira page, or a title or
 branch with a card key, for 30 seconds or more. A shorter glance counts as a piece without a card,
 so passing through a tab makes no worklog. [Rules](#rules) are below.
