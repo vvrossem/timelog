@@ -69,6 +69,16 @@ def test_activitywatch_turns_take_the_card_of_their_session(aw):
     assert timeline.agent_minutes(entries) == {"A": 55, "B": 31}
 
 
+def test_copilot_turns_keep_their_provider_in_the_stream(aw):
+    aw["agent.turn"] = [turn("09:00", 30, "s1", "work on ABC-1", agent="github-copilot")]
+    out, _info = activitywatch.combine(at("00:00"), at("23:59"), re.compile(r"ABC-\d+"), "me")
+    assert sorted((e.kind, e.stream) for e in out if e.kind in ("claude", "aw-agent")) == [
+        ("aw-agent", "copilot s1"), ("claude", "copilot s1")]
+    entries, _breaks, _notes = timeline.build(out, [], at("18:00"))
+    assert entries[0].streams == ("copilot s1",)
+    assert model.lane_of(entries[0].streams) == "agent s1"
+
+
 def test_activitywatch_afk_is_presence(aw, monkeypatch):
     monkeypatch.setattr(model, "pr_info", lambda repo, n: {"headRefName": "B-2-fix", "author": {"login": "me"}})
     aw["afkstatus"] = [aw_event("09:05", 40, status="not-afk"), aw_event("09:45", 30, status="afk")]

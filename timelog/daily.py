@@ -294,7 +294,7 @@ def entry_spans(entry, entries, events):
                 prompts.append(e)
             continue
         if e.until and min(e.until, entry.end) > max(e.when, entry.start):
-            stream = e.stream.removesuffix(" (folded)").replace("claude ", "agent ")
+            stream = model.agent_label(e.stream.removesuffix(" (folded)"))
             label = full_name(e.keys[0] if e.keys and e.keys[0] else e.text, names)
             held[(stream, label)].append((max(e.when, entry.start), min(e.until, entry.end)))
     return held, prompts

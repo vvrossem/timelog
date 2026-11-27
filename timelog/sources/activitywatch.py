@@ -158,7 +158,7 @@ def evidence(title, told, tab, edit, cards, me):
         string = f"{data.get('title', '')}|{data.get('url', '')}"[:300]
         card, review = page if page else (model.card_of_text(string, cards), False)
         return ("browser", card, review, "activitywatch web", string)
-    if told:  # a Claude session's window: (card, review) of its session
+    if told:  # an agent session's window: (card, review) of its session
         return ("focus", *told, "activitywatch window", title[:300])
     if edit:
         data = edit.get("data", {})
@@ -200,6 +200,12 @@ COMMAND = re.compile(r"<command-name>(/[\w:.-]+)</command-name>")
 
 def session_of_turn(t):
     return (t.get("data", {}).get("session_id") or "")[:8]
+
+
+def agent_stream(t):
+    provider = t.get("data", {}).get("agent")
+    name = {"github-copilot": "copilot"}.get(provider, "claude")
+    return f"{name} {session_of_turn(t)}"
 
 
 def sessions(turns, cards, me):
@@ -259,8 +265,9 @@ def prompts(turns, info):
             continue
         session = session_of_turn(t)
         card, review = info[session]["card"] or (None, False)
-        out.append(model.Event(t["start"], card, review, f"claude {session}", "claude",
-                               f"claude {session} {data.get('project', '')}", (data.get("prompt") or "")[:200],
+        stream = agent_stream(t)
+        out.append(model.Event(t["start"], card, review, stream, "claude",
+                               f"{stream} {data.get('project', '')}", (data.get("prompt") or "")[:200],
                                until=t["start"], ref=data.get("turn_id")))
     return out
 
@@ -285,7 +292,7 @@ def agent_turns(turns, info):
     out = []
     for t in turns:
         data = t.get("data", {})
-        session = f"claude {session_of_turn(t)}"
+        session = agent_stream(t)
         card, review = info[session_of_turn(t)]["card"] or (None, False)
         if data.get("subagent_id"):
             stream, text = f"{session}/{data['subagent_id'][:8]}", data.get("description", "")

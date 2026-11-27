@@ -106,7 +106,8 @@ spent on its Jira page while the agent worked isn't added on top. The day is mad
 
 You need ActivityWatch with its AFK and window watchers, plus
 [aw-watcher-web](https://github.com/ActivityWatch/aw-watcher-web) for browser tabs and calls, and
-[aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents) if you use Claude Code.
+[aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents) for Claude Code or GitHub Copilot
+(with its Copilot poller).
 ActivityWatch records from the day you install it, so set it up before the first day you want to
 log. [`gh`](https://cli.github.com), logged in, gives PRs their card.
 
@@ -194,6 +195,7 @@ the lines to type into Tempo.
 | `timelog` | the questions above, then the comments, then the push |
 | `/timelog` in Claude Code | the same, as a conversation |
 | `timelog summary` | how long you've worked so far, per card, without questions |
+| `timelog serve` | the day in your browser: its lanes and entries, and the same questions to answer |
 | `timelog friday`, `timelog 14.11.26` | another day (`timelog --help` lists the date forms) |
 
 Run it as often as you like: it keeps what you've already answered. Missed days come first, the
@@ -311,6 +313,7 @@ timelog reads ActivityWatch on your machine and writes to Jira only the worklogs
 ActivityWatch keeps (window titles, URLs, prompts) stays in its local database, unencrypted:
 [aw-watcher-agents](https://github.com/vvrossem/aw-watcher-agents#privacy) can store less of the
 prompts.
+`timelog serve` answers on `127.0.0.1` only, to pages served from that address.
 
 ## Development
 

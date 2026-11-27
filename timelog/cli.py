@@ -54,8 +54,8 @@ def sources_of(entry):
     (subagents in their session). What was folded in from your lane shows in `show N`"""
     streams = [s for s in entry.streams if not s.endswith(" (folded)")] or [
         s.removesuffix(" (folded)") for s in entry.streams]
-    mine = dict.fromkeys(s.removeprefix("me ") for s in streams if not s.startswith("claude "))
-    agents = dict.fromkeys(s.removeprefix("claude ").split("/")[0] for s in streams if s.startswith("claude "))
+    mine = dict.fromkeys(s.removeprefix("me ") for s in streams if not model.is_agent_stream(s))
+    agents = dict.fromkeys(model.agent_session(s) for s in streams if model.is_agent_stream(s))
     return ", ".join([*mine, *([f"agent {' '.join(agents)}"] if agents else [])])
 
 
@@ -359,7 +359,7 @@ timelog [DATE] [--edit]      review a day: questions in the terminal, or your ed
 
 
 def main():
-    names = ("review", "summary", "day", "show", "add", "set", "notes", "cards", "fetch", "push")
+    names = ("review", "summary", "day", "show", "add", "set", "notes", "cards", "fetch", "push", "serve")
     helps = {
         "review": "what `timelog` runs: the days not pushed yet, then the day, as questions in the terminal "
                   "(--edit: in your editor); sent to Jira only if you answer y",
@@ -372,6 +372,7 @@ def main():
         "cards": "the day's card keys",
         "fetch": "ask Jira for the day's cards, candidates and worklogs (API token)",
         "push": "send the day's worklogs to Jira (-n, --dry-run: only show the plan)",
+        "serve": "the day in your browser: its lanes, entries and totals, and the review's questions",
         "config": "the effective settings and what's missing (--write: all of them, to the config)",
     }
     listing = "\n".join(f"  {name:9} {text}" for name, text in helps.items())
@@ -398,6 +399,8 @@ def main():
                                "N=TASK! also gives its page or window that task from now on")
     parsers["set"].add_argument("--drop", action="append", default=[], type=int, help="N, entry N as `show` numbers it")
     parsers["set"].add_argument("--comment", action="append", default=[], help="TASK=TEXT, the worklog comment")
+    parsers["serve"].add_argument("--port", type=int, default=5610, help="5610 when left out")
+    parsers["serve"].add_argument("--no-open", action="store_true", help="print the address, don't open a browser")
     parsers["push"].add_argument("-n", "--dry-run", action="store_true", help="show the plan, send nothing")
     parsers["push"].add_argument("--json", action="store_true", help="the plan as JSON, for the session; sends nothing")
     parsers["push"].add_argument("--record", help="a JSON list of the worklogs added or updated: id, card, "
@@ -423,5 +426,9 @@ def main():
             parsers[a.cmd].error(f"{value!r} isn't a date. Dates: {date_forms()}")
     if config.ERROR and a.cmd != "config":  # not a day built from the defaults
         raise SystemExit(f"# {config.ERROR}")
-    home = {"review": reviewing, "fetch": sync, "push": sync}.get(a.cmd)
+    if a.cmd == "serve":
+        from . import web  # it imports this module for its helpers
+        home = web
+    else:
+        home = {"review": reviewing, "fetch": sync, "push": sync}.get(a.cmd)
     (getattr(home, f"cmd_{a.cmd}") if home else globals()[f"cmd_{a.cmd}"])(a)
